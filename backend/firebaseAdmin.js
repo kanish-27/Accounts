@@ -4,10 +4,16 @@ let app;
 
 const projectId = process.env.FIREBASE_PROJECT_ID;
 const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-const privateKey = process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined;
+let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
+if (privateKey) {
+  privateKey = privateKey.replace(/\\n/g, '\n').trim();
+  if (!privateKey.includes('-----BEGIN PRIVATE KEY-----')) {
+    privateKey = `-----BEGIN PRIVATE KEY-----\n${privateKey}\n-----END PRIVATE KEY-----\n`;
+  }
+}
 
 if (projectId && clientEmail && privateKey) {
-  console.log('DEBUG: privateKey start =', JSON.stringify(privateKey.substring(0, 50)));
   try {
     app = admin.initializeApp({
       credential: admin.credential.cert({

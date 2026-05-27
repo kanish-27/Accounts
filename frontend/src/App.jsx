@@ -8,7 +8,8 @@ import SalaryPayroll from './components/SalaryPayroll';
 import Settings from './components/Settings';
 import LandingPage from './components/LandingPage';
 
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 
+  (import.meta.env.DEV ? 'http://localhost:5000/api' : 'https://accounts-va8t.onrender.com/api');
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);

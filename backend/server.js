@@ -151,7 +151,7 @@ app.get('/api/attendance', asyncHandler(async (req, res) => {
   const logs = logsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
   const result = suppliers.map(supplier => {
-    const log = logs.find(l => l.supplier_id === supplier.id);
+    const log = logs.find(l => l.supplier_id?.toString() === supplier.id.toString());
     return {
       supplier_id: supplier.id,
       supplier_name: supplier.name,
@@ -207,7 +207,7 @@ app.get('/api/attendance/summary', asyncHandler(async (req, res) => {
   logs.sort((a, b) => b.date.localeCompare(a.date));
 
   const summary = suppliers.map(supplier => {
-    const supplierLogs = logs.filter(l => l.supplier_id === supplier.id)
+    const supplierLogs = logs.filter(l => l.supplier_id?.toString() === supplier.id.toString())
       .map(l => ({ ...l, supplier_name: supplier.name }));
     
     let present = 0;
@@ -252,11 +252,11 @@ app.get('/api/kot', asyncHandler(async (req, res) => {
   let bills = snapshot.docs.map(doc => ({ 
     id: doc.id, 
     ...doc.data(), 
-    supplier_name: suppliers[doc.data().supplier_id] || 'Unknown'
+    supplier_name: suppliers[doc.data().supplier_id?.toString()] || 'Unknown'
   }));
 
   if (supplier_id) {
-    bills = bills.filter(b => b.supplier_id === supplier_id);
+    bills = bills.filter(b => b.supplier_id?.toString() === supplier_id.toString());
   }
   if (start_date) {
     bills = bills.filter(b => b.date >= start_date);
@@ -282,6 +282,8 @@ app.post('/api/kot', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Supplier ID, Bill Number, and Amount are required' });
   }
 
+  const supplierIdStr = supplier_id.toString();
+
   const numericAmount = parseFloat(amount);
   if (isNaN(numericAmount) || numericAmount < 0) {
     return res.status(400).json({ error: 'Amount must be a valid positive number' });
@@ -298,7 +300,7 @@ app.post('/api/kot', asyncHandler(async (req, res) => {
   }
 
   const docRef = await db.collection('kot_bills').add({
-    supplier_id,
+    supplier_id: supplierIdStr,
     bill_number,
     amount: numericAmount,
     date: currentDate,
@@ -306,7 +308,7 @@ app.post('/api/kot', asyncHandler(async (req, res) => {
     remarks: remarks || ''
   });
 
-  const supplierDoc = await db.collection('suppliers').doc(supplier_id).get();
+  const supplierDoc = await db.collection('suppliers').doc(supplierIdStr).get();
   const supplierName = supplierDoc.exists ? supplierDoc.data().name : 'Unknown';
 
   const newBill = await docRef.get();
@@ -342,11 +344,11 @@ app.get('/api/advances', asyncHandler(async (req, res) => {
   let advances = snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data(),
-    supplier_name: suppliers[doc.data().supplier_id] || 'Unknown'
+    supplier_name: suppliers[doc.data().supplier_id?.toString()] || 'Unknown'
   }));
 
   if (supplier_id) {
-    advances = advances.filter(a => a.supplier_id === supplier_id);
+    advances = advances.filter(a => a.supplier_id?.toString() === supplier_id.toString());
   }
   if (status) {
     advances = advances.filter(a => a.status === status);
@@ -364,6 +366,8 @@ app.post('/api/advances', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Supplier ID and Amount are required' });
   }
 
+  const supplierIdStr = supplier_id.toString();
+
   const numericAmount = parseFloat(amount);
   if (isNaN(numericAmount) || numericAmount <= 0) {
     return res.status(400).json({ error: 'Amount must be a valid positive number' });
@@ -372,7 +376,7 @@ app.post('/api/advances', asyncHandler(async (req, res) => {
   const advanceDate = date || new Date().toISOString().split('T')[0];
 
   const docRef = await db.collection('advances').add({
-    supplier_id,
+    supplier_id: supplierIdStr,
     amount: numericAmount,
     date: advanceDate,
     remarks: remarks || '',
@@ -380,7 +384,7 @@ app.post('/api/advances', asyncHandler(async (req, res) => {
     payout_id: null
   });
 
-  const supplierDoc = await db.collection('suppliers').doc(supplier_id).get();
+  const supplierDoc = await db.collection('suppliers').doc(supplierIdStr).get();
   const supplierName = supplierDoc.exists ? supplierDoc.data().name : 'Unknown';
 
   const newAdvance = await docRef.get();
@@ -444,13 +448,13 @@ app.get('/api/payroll/calculate', asyncHandler(async (req, res) => {
 
   const filteredSuppliers = suppliers.filter(supplier => {
     if (supplier.status === 'active') return true;
-    const hasAttendance = allAttendance.some(a => a.supplier_id === supplier.id);
-    const hasKot = allKots.some(k => k.supplier_id === supplier.id);
+    const hasAttendance = allAttendance.some(a => a.supplier_id?.toString() === supplier.id.toString());
+    const hasKot = allKots.some(k => k.supplier_id?.toString() === supplier.id.toString());
     return hasAttendance || hasKot;
   });
 
   for (const supplier of filteredSuppliers) {
-    const supplierAttendance = allAttendance.filter(a => a.supplier_id === supplier.id);
+    const supplierAttendance = allAttendance.filter(a => a.supplier_id?.toString() === supplier.id.toString());
     let presentCount = 0;
     let halfDayCount = 0;
     let absentCount = 0;
@@ -464,7 +468,7 @@ app.get('/api/payroll/calculate', asyncHandler(async (req, res) => {
     const attendanceDays = presentCount + (halfDayCount * 0.5);
     const attendancePay = attendanceDays * (supplier.basic_daily_wage || 0);
 
-    const supplierKots = allKots.filter(k => k.supplier_id === supplier.id);
+    const supplierKots = allKots.filter(k => k.supplier_id?.toString() === supplier.id.toString());
     const dailyTotals = {};
     supplierKots.forEach(k => {
       dailyTotals[k.date] = (dailyTotals[k.date] || 0) + (k.amount || 0);
@@ -483,7 +487,7 @@ app.get('/api/payroll/calculate', asyncHandler(async (req, res) => {
       }
     });
 
-    const pendingAdvances = allAdvances.filter(a => a.supplier_id === supplier.id && a.date <= end_date);
+    const pendingAdvances = allAdvances.filter(a => a.supplier_id?.toString() === supplier.id.toString() && a.date <= end_date);
     pendingAdvances.sort((a, b) => a.date.localeCompare(b.date));
 
     let advanceDeducted = 0;
@@ -492,7 +496,7 @@ app.get('/api/payroll/calculate', asyncHandler(async (req, res) => {
     });
 
     const existingPayout = allPayouts.find(p => 
-      p.supplier_id === supplier.id && 
+      p.supplier_id?.toString() === supplier.id.toString() && 
       !(p.end_date < start_date || p.start_date > end_date)
     );
 
@@ -545,9 +549,11 @@ app.post('/api/payroll/payout', asyncHandler(async (req, res) => {
   for (const record of records) {
     const { supplier_id, attendance_days, total_kot_amount, commission_amount, attendance_pay, total_salary, advance_deducted, net_salary } = record;
     
+    const supplierIdStr = supplier_id.toString();
+
     const payoutRef = db.collection('salary_payouts').doc();
     batch.set(payoutRef, {
-      supplier_id,
+      supplier_id: supplierIdStr,
       start_date,
       end_date,
       attendance_days: parseFloat(attendance_days) || 0,
@@ -562,7 +568,7 @@ app.post('/api/payroll/payout', asyncHandler(async (req, res) => {
     });
 
     const advSnapshot = await advancesColl
-      .where('supplier_id', '==', supplier_id)
+      .where('supplier_id', '==', supplierIdStr)
       .where('status', '==', 'pending')
       .get();
 
@@ -595,7 +601,7 @@ app.get('/api/payroll/history', asyncHandler(async (req, res) => {
   const advances = advancesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
   payouts.forEach(payout => {
-    payout.supplier_name = suppliers[payout.supplier_id] || 'Unknown';
+    payout.supplier_name = suppliers[payout.supplier_id?.toString()] || 'Unknown';
     payout.advances = advances.filter(a => a.payout_id === payout.id)
       .map(a => ({ amount: a.amount, date: a.date, remarks: a.remarks }));
     payout.advances.sort((a, b) => a.date.localeCompare(b.date));
@@ -715,7 +721,7 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
   // 5. Month-to-date estimated payout
   const mtdGrouped = {};
   mtdKots.forEach(k => {
-    const key = `${k.supplier_id}_${k.date}`;
+    const key = `${k.supplier_id?.toString()}_${k.date}`;
     mtdGrouped[key] = (mtdGrouped[key] || 0) + (k.amount || 0);
   });
 
@@ -731,7 +737,7 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
   const mtdAttendance = allAttendance.filter(a => a.date >= monthStart && a.date <= today);
   let estimatedMtdAttPay = 0;
   mtdAttendance.forEach(log => {
-    const supplier = suppliers.find(s => s.id === log.supplier_id);
+    const supplier = suppliers.find(s => s.id === log.supplier_id?.toString());
     if (supplier) {
       if (log.status === 'Present') {
         estimatedMtdAttPay += (supplier.basic_daily_wage || 0);
@@ -746,7 +752,8 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
   // 5b. Today's Qualified Commission
   const todayGrouped = {};
   todayKots.forEach(k => {
-    todayGrouped[k.supplier_id] = (todayGrouped[k.supplier_id] || 0) + (k.amount || 0);
+    const supIdStr = k.supplier_id?.toString();
+    todayGrouped[supIdStr] = (todayGrouped[supIdStr] || 0) + (k.amount || 0);
   });
   let todayQualifiedCommission = 0;
   Object.keys(todayGrouped).forEach(supId => {
@@ -763,7 +770,8 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
   // 7. Top Supplier for the current month
   const mtdSupplierTotals = {};
   mtdKots.forEach(k => {
-    mtdSupplierTotals[k.supplier_id] = (mtdSupplierTotals[k.supplier_id] || 0) + (k.amount || 0);
+    const supIdStr = k.supplier_id?.toString();
+    mtdSupplierTotals[supIdStr] = (mtdSupplierTotals[supIdStr] || 0) + (k.amount || 0);
   });
   let topSupplier = null;
   let maxTotal = 0;
@@ -820,7 +828,7 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
   const activities = [];
 
   recentKotsSlice.forEach(k => {
-    const supplier = suppliers.find(s => s.id === k.supplier_id);
+    const supplier = suppliers.find(s => s.id === k.supplier_id?.toString());
     const name = supplier ? supplier.name : 'Unknown';
     activities.push({
       type: 'kot',
@@ -832,7 +840,7 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
   });
 
   recentAttendanceSlice.forEach(a => {
-    const supplier = suppliers.find(s => s.id === a.supplier_id);
+    const supplier = suppliers.find(s => s.id === a.supplier_id?.toString());
     const name = supplier ? supplier.name : 'Unknown';
     const hr = a.shift === '5-11' ? '17:00' : '11:00';
     activities.push({
@@ -845,7 +853,7 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
   });
 
   recentPayoutsSlice.forEach(p => {
-    const supplier = suppliers.find(s => s.id === p.supplier_id);
+    const supplier = suppliers.find(s => s.id === p.supplier_id?.toString());
     const name = supplier ? supplier.name : 'Unknown';
     activities.push({
       type: 'payout',

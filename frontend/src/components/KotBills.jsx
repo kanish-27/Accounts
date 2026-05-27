@@ -87,7 +87,7 @@ export default function KotBills({ showToast, API_BASE }) {
     }
 
     const payload = {
-      supplier_id: parseInt(supplierId),
+      supplier_id: supplierId.toString(),
       bill_number: billNumber.trim(),
       amount: parseFloat(amount),
       date,

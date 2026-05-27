@@ -1,0 +1,895 @@
+import express from 'express';
+import cors from 'cors';
+import { initDb } from './db.js';
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+app.use(cors());
+app.use(express.json());
+
+// Initialize database before starting server
+let db;
+try {
+  db = await initDb();
+  console.log('Firebase Firestore Database initialized successfully.');
+} catch (error) {
+  console.error('Failed to initialize database:', error);
+  process.exit(1);
+}
+
+// Helper to wrap async route handlers
+const asyncHandler = (fn) => (req, res, next) => {
+  Promise.resolve(fn(req, res, next)).catch(next);
+};
+
+// ==================== SUPPLIER ROUTES ====================
+
+// Get all suppliers
+app.get('/api/suppliers', asyncHandler(async (req, res) => {
+  const status = req.query.status;
+  let query = db.collection('suppliers');
+  
+  if (status) {
+    query = query.where('status', '==', status);
+  }
+  
+  const snapshot = await query.get();
+  const suppliers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  res.json(suppliers);
+}));
+
+// Add new supplier
+app.post('/api/suppliers', asyncHandler(async (req, res) => {
+  const { name, phone, joining_date, basic_daily_wage, status } = req.body;
+  if (!name) {
+    return res.status(400).json({ error: 'Name is required' });
+  }
+
+  const supplierData = {
+    name: name.trim(),
+    phone: phone || '',
+    joining_date: joining_date || new Date().toISOString().split('T')[0],
+    basic_daily_wage: parseFloat(basic_daily_wage) || 0,
+    status: status || 'active'
+  };
+
+  let nextId;
+  await db.runTransaction(async (transaction) => {
+    const suppliersColl = db.collection('suppliers');
+    const snapshot = await transaction.get(suppliersColl);
+    let maxId = 1000;
+    
+    snapshot.docs.forEach(doc => {
+      const numericId = parseInt(doc.id, 10);
+      if (!isNaN(numericId) && numericId > maxId) {
+        maxId = numericId;
+      }
+    });
+    
+    nextId = (maxId + 1).toString();
+    const newDocRef = suppliersColl.doc(nextId);
+    transaction.set(newDocRef, supplierData);
+  });
+
+  res.status(201).json({ id: nextId, ...supplierData });
+}));
+
+// Update supplier
+app.put('/api/suppliers/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { name, phone, joining_date, basic_daily_wage, status } = req.body;
+  
+  if (!name) {
+    return res.status(400).json({ error: 'Name is required' });
+  }
+
+  const docRef = db.collection('suppliers').doc(id);
+  const doc = await docRef.get();
+  if (!doc.exists) {
+    return res.status(404).json({ error: 'Supplier not found' });
+  }
+
+  await docRef.update({
+    name: name.trim(),
+    phone: phone || '',
+    joining_date: joining_date || '',
+    basic_daily_wage: parseFloat(basic_daily_wage) || 0,
+    status: status || 'active'
+  });
+
+  const updatedDoc = await docRef.get();
+  res.json({ id: updatedDoc.id, ...updatedDoc.data() });
+}));
+
+// Delete supplier
+app.delete('/api/suppliers/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const docRef = db.collection('suppliers').doc(id);
+  const doc = await docRef.get();
+  if (!doc.exists) {
+    return res.status(404).json({ error: 'Supplier not found' });
+  }
+
+  await docRef.delete();
+
+  // Cascade delete all documents associated with this supplier ID
+  const batch = db.batch();
+  
+  const attSnapshot = await db.collection('attendance').where('supplier_id', '==', id).get();
+  attSnapshot.docs.forEach(d => batch.delete(d.ref));
+  
+  const kotSnapshot = await db.collection('kot_bills').where('supplier_id', '==', id).get();
+  kotSnapshot.docs.forEach(d => batch.delete(d.ref));
+  
+  const advSnapshot = await db.collection('advances').where('supplier_id', '==', id).get();
+  advSnapshot.docs.forEach(d => batch.delete(d.ref));
+  
+  const paySnapshot = await db.collection('salary_payouts').where('supplier_id', '==', id).get();
+  paySnapshot.docs.forEach(d => batch.delete(d.ref));
+  
+  await batch.commit();
+
+  res.json({ message: 'Supplier and all associated logs deleted successfully' });
+}));
+
+
+// ==================== ATTENDANCE ROUTES ====================
+
+// Get attendance for a date (YYYY-MM-DD)
+app.get('/api/attendance', asyncHandler(async (req, res) => {
+  const { date } = req.query;
+  if (!date) {
+    return res.status(400).json({ error: 'Date query parameter is required (YYYY-MM-DD)' });
+  }
+
+  const activeSuppliersSnapshot = await db.collection('suppliers').where('status', '==', 'active').get();
+  const suppliers = activeSuppliersSnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
+
+  const logsSnapshot = await db.collection('attendance').where('date', '==', date).get();
+  const logs = logsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  const result = suppliers.map(supplier => {
+    const log = logs.find(l => l.supplier_id === supplier.id);
+    return {
+      supplier_id: supplier.id,
+      supplier_name: supplier.name,
+      date,
+      status: log ? log.status : 'Absent',
+      shift: log ? log.shift : '11-11'
+    };
+  });
+
+  res.json(result);
+}));
+
+// Save or Update attendance for a date
+app.post('/api/attendance', asyncHandler(async (req, res) => {
+  const { date, records } = req.body;
+  if (!date || !records || !Array.isArray(records)) {
+    return res.status(400).json({ error: 'Date and records array are required' });
+  }
+
+  const batch = db.batch();
+  for (const record of records) {
+    const { supplier_id, status, shift } = record;
+    const docId = `${supplier_id}_${date}`;
+    const docRef = db.collection('attendance').doc(docId);
+    batch.set(docRef, {
+      supplier_id,
+      date,
+      status,
+      shift: shift || '11-11'
+    }, { merge: true });
+  }
+  
+  await batch.commit();
+  res.json({ message: 'Attendance records saved successfully' });
+}));
+
+// Get attendance summary for date range
+app.get('/api/attendance/summary', asyncHandler(async (req, res) => {
+  const { start_date, end_date } = req.query;
+  if (!start_date || !end_date) {
+    return res.status(400).json({ error: 'start_date and end_date query parameters are required' });
+  }
+
+  const suppliersSnapshot = await db.collection('suppliers').get();
+  const suppliers = suppliersSnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
+  
+  const logsSnapshot = await db.collection('attendance')
+    .where('date', '>=', start_date)
+    .where('date', '<=', end_date)
+    .get();
+  
+  const logs = logsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  logs.sort((a, b) => b.date.localeCompare(a.date));
+
+  const summary = suppliers.map(supplier => {
+    const supplierLogs = logs.filter(l => l.supplier_id === supplier.id)
+      .map(l => ({ ...l, supplier_name: supplier.name }));
+    
+    let present = 0;
+    let half = 0;
+    let absent = 0;
+    
+    supplierLogs.forEach(l => {
+      if (l.status === 'Present') present++;
+      else if (l.status === 'Half Day') half++;
+      else if (log.status === 'Absent') absent++; // Fallback check
+      else absent++;
+    });
+
+    return {
+      supplier_id: supplier.id,
+      supplier_name: supplier.name,
+      present_count: present,
+      half_count: half,
+      absent_count: absent,
+      total_paid_days: present + (half * 0.5),
+      logs: supplierLogs
+    };
+  });
+
+  res.json(summary);
+}));
+
+
+// ==================== KOT BILL ROUTES ====================
+
+// Get KOT bills with filters
+app.get('/api/kot', asyncHandler(async (req, res) => {
+  const { supplier_id, start_date, end_date } = req.query;
+
+  const suppliersSnapshot = await db.collection('suppliers').get();
+  const suppliers = {};
+  suppliersSnapshot.docs.forEach(doc => {
+    suppliers[doc.id] = doc.data().name;
+  });
+
+  let snapshot = await db.collection('kot_bills').get();
+  let bills = snapshot.docs.map(doc => ({ 
+    id: doc.id, 
+    ...doc.data(), 
+    supplier_name: suppliers[doc.data().supplier_id] || 'Unknown'
+  }));
+
+  if (supplier_id) {
+    bills = bills.filter(b => b.supplier_id === supplier_id);
+  }
+  if (start_date) {
+    bills = bills.filter(b => b.date >= start_date);
+  }
+  if (end_date) {
+    bills = bills.filter(b => b.date <= end_date);
+  }
+
+  bills.sort((a, b) => {
+    const dateCompare = b.date.localeCompare(a.date);
+    if (dateCompare !== 0) return dateCompare;
+    return (b.time || '').localeCompare(a.time || '');
+  });
+
+  res.json(bills);
+}));
+
+// Add KOT bill
+app.post('/api/kot', asyncHandler(async (req, res) => {
+  const { supplier_id, bill_number, amount, date, time, remarks } = req.body;
+  
+  if (!supplier_id || !bill_number || amount === undefined) {
+    return res.status(400).json({ error: 'Supplier ID, Bill Number, and Amount are required' });
+  }
+
+  const numericAmount = parseFloat(amount);
+  if (isNaN(numericAmount) || numericAmount < 0) {
+    return res.status(400).json({ error: 'Amount must be a valid positive number' });
+  }
+
+  const currentDate = date || new Date().toISOString().split('T')[0];
+  
+  let currentTime = time;
+  if (!currentTime) {
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    currentTime = `${hours}:${minutes}`;
+  }
+
+  const docRef = await db.collection('kot_bills').add({
+    supplier_id,
+    bill_number,
+    amount: numericAmount,
+    date: currentDate,
+    time: currentTime,
+    remarks: remarks || ''
+  });
+
+  const supplierDoc = await db.collection('suppliers').doc(supplier_id).get();
+  const supplierName = supplierDoc.exists ? supplierDoc.data().name : 'Unknown';
+
+  const newBill = await docRef.get();
+  res.status(201).json({ id: newBill.id, ...newBill.data(), supplier_name: supplierName });
+}));
+
+// Delete KOT bill
+app.delete('/api/kot/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const docRef = db.collection('kot_bills').doc(id);
+  const doc = await docRef.get();
+  if (!doc.exists) {
+    return res.status(404).json({ error: 'KOT Bill not found' });
+  }
+  await docRef.delete();
+  res.json({ message: 'KOT Bill deleted successfully' });
+}));
+
+
+// ==================== ADVANCES ROUTES ====================
+
+// Get advances filterable by supplier_id and status
+app.get('/api/advances', asyncHandler(async (req, res) => {
+  const { supplier_id, status } = req.query;
+
+  const suppliersSnapshot = await db.collection('suppliers').get();
+  const suppliers = {};
+  suppliersSnapshot.docs.forEach(doc => {
+    suppliers[doc.id] = doc.data().name;
+  });
+
+  let snapshot = await db.collection('advances').get();
+  let advances = snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+    supplier_name: suppliers[doc.data().supplier_id] || 'Unknown'
+  }));
+
+  if (supplier_id) {
+    advances = advances.filter(a => a.supplier_id === supplier_id);
+  }
+  if (status) {
+    advances = advances.filter(a => a.status === status);
+  }
+
+  advances.sort((a, b) => b.date.localeCompare(a.date));
+  res.json(advances);
+}));
+
+// Log new cash advance
+app.post('/api/advances', asyncHandler(async (req, res) => {
+  const { supplier_id, amount, date, remarks } = req.body;
+  
+  if (!supplier_id || amount === undefined) {
+    return res.status(400).json({ error: 'Supplier ID and Amount are required' });
+  }
+
+  const numericAmount = parseFloat(amount);
+  if (isNaN(numericAmount) || numericAmount <= 0) {
+    return res.status(400).json({ error: 'Amount must be a valid positive number' });
+  }
+
+  const advanceDate = date || new Date().toISOString().split('T')[0];
+
+  const docRef = await db.collection('advances').add({
+    supplier_id,
+    amount: numericAmount,
+    date: advanceDate,
+    remarks: remarks || '',
+    status: 'pending',
+    payout_id: null
+  });
+
+  const supplierDoc = await db.collection('suppliers').doc(supplier_id).get();
+  const supplierName = supplierDoc.exists ? supplierDoc.data().name : 'Unknown';
+
+  const newAdvance = await docRef.get();
+  res.status(201).json({ id: newAdvance.id, ...newAdvance.data(), supplier_name: supplierName });
+}));
+
+// Delete a pending cash advance
+app.delete('/api/advances/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const docRef = db.collection('advances').doc(id);
+  const doc = await docRef.get();
+  if (!doc.exists) {
+    return res.status(404).json({ error: 'Advance record not found' });
+  }
+  if (doc.data().status !== 'pending') {
+    return res.status(400).json({ error: 'Only pending advances can be deleted' });
+  }
+
+  await docRef.delete();
+  res.json({ message: 'Advance record deleted successfully' });
+}));
+
+
+// ==================== PAYROLL & SALARY ROUTES ====================
+
+// Calculate salary breakdown for date range
+app.get('/api/payroll/calculate', asyncHandler(async (req, res) => {
+  const { start_date, end_date } = req.query;
+  
+  if (!start_date || !end_date) {
+    return res.status(400).json({ error: 'start_date and end_date parameters are required' });
+  }
+
+  const thresholdDoc = await db.collection('settings').doc('kot_commission_limit').get();
+  const threshold = thresholdDoc.exists ? parseFloat(thresholdDoc.data().value) : 250;
+
+  const suppliersSnapshot = await db.collection('suppliers').get();
+  const suppliers = suppliersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  const attendanceSnapshot = await db.collection('attendance')
+    .where('date', '>=', start_date)
+    .where('date', '<=', end_date)
+    .get();
+  const allAttendance = attendanceSnapshot.docs.map(doc => doc.data());
+
+  const kotSnapshot = await db.collection('kot_bills')
+    .where('date', '>=', start_date)
+    .where('date', '<=', end_date)
+    .get();
+  const allKots = kotSnapshot.docs.map(doc => doc.data());
+
+  const advancesSnapshot = await db.collection('advances')
+    .where('status', '==', 'pending')
+    .get();
+  const allAdvances = advancesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  const payoutsSnapshot = await db.collection('salary_payouts').get();
+  const allPayouts = payoutsSnapshot.docs.map(doc => doc.data());
+
+  const report = [];
+
+  const filteredSuppliers = suppliers.filter(supplier => {
+    if (supplier.status === 'active') return true;
+    const hasAttendance = allAttendance.some(a => a.supplier_id === supplier.id);
+    const hasKot = allKots.some(k => k.supplier_id === supplier.id);
+    return hasAttendance || hasKot;
+  });
+
+  for (const supplier of filteredSuppliers) {
+    const supplierAttendance = allAttendance.filter(a => a.supplier_id === supplier.id);
+    let presentCount = 0;
+    let halfDayCount = 0;
+    let absentCount = 0;
+
+    supplierAttendance.forEach(log => {
+      if (log.status === 'Present') presentCount++;
+      else if (log.status === 'Half Day') halfDayCount++;
+      else if (log.status === 'Absent') absentCount++;
+    });
+
+    const attendanceDays = presentCount + (halfDayCount * 0.5);
+    const attendancePay = attendanceDays * (supplier.basic_daily_wage || 0);
+
+    const supplierKots = allKots.filter(k => k.supplier_id === supplier.id);
+    const dailyTotals = {};
+    supplierKots.forEach(k => {
+      dailyTotals[k.date] = (dailyTotals[k.date] || 0) + (k.amount || 0);
+    });
+
+    let totalKotAmount = 0;
+    let commissionAmount = 0;
+
+    Object.keys(dailyTotals).forEach(date => {
+      const dailyTotal = dailyTotals[date];
+      totalKotAmount += dailyTotal;
+      
+      const dailyComm = dailyTotal * 0.05;
+      if (dailyComm >= threshold) {
+        commissionAmount += dailyComm;
+      }
+    });
+
+    const pendingAdvances = allAdvances.filter(a => a.supplier_id === supplier.id && a.date <= end_date);
+    pendingAdvances.sort((a, b) => a.date.localeCompare(b.date));
+
+    let advanceDeducted = 0;
+    pendingAdvances.forEach(adv => {
+      advanceDeducted += adv.amount;
+    });
+
+    const existingPayout = allPayouts.find(p => 
+      p.supplier_id === supplier.id && 
+      !(p.end_date < start_date || p.start_date > end_date)
+    );
+
+    const totalSalary = attendancePay + commissionAmount;
+    const netSalary = Math.max(0, totalSalary - advanceDeducted);
+
+    report.push({
+      supplier_id: supplier.id,
+      supplier_name: supplier.name,
+      basic_daily_wage: supplier.basic_daily_wage,
+      present_days: presentCount,
+      half_days: halfDayCount,
+      absent_days: absentCount,
+      attendance_days: attendanceDays,
+      attendance_pay: attendancePay,
+      total_kot_amount: totalKotAmount,
+      commission_amount: commissionAmount,
+      total_salary: totalSalary,
+      advance_deducted: advanceDeducted,
+      net_salary: netSalary,
+      advances: pendingAdvances,
+      already_paid: existingPayout ? true : false,
+      payout_details: existingPayout ? {
+        id: existingPayout.id,
+        start_date: existingPayout.start_date,
+        end_date: existingPayout.end_date,
+        payment_date: existingPayout.payment_date
+      } : null
+    });
+  }
+
+  res.json({
+    start_date,
+    end_date,
+    report
+  });
+}));
+
+// Disburse and record payout
+app.post('/api/payroll/payout', asyncHandler(async (req, res) => {
+  const { records, start_date, end_date, payment_date } = req.body;
+  if (!records || !Array.isArray(records) || !start_date || !end_date) {
+    return res.status(400).json({ error: 'Missing required payroll details' });
+  }
+
+  const pDate = payment_date || new Date().toISOString().split('T')[0];
+  const batch = db.batch();
+  const advancesColl = db.collection('advances');
+
+  for (const record of records) {
+    const { supplier_id, attendance_days, total_kot_amount, commission_amount, attendance_pay, total_salary, advance_deducted, net_salary } = record;
+    
+    const payoutRef = db.collection('salary_payouts').doc();
+    batch.set(payoutRef, {
+      supplier_id,
+      start_date,
+      end_date,
+      attendance_days: parseFloat(attendance_days) || 0,
+      total_kot_amount: parseFloat(total_kot_amount) || 0,
+      commission_amount: parseFloat(commission_amount) || 0,
+      attendance_pay: parseFloat(attendance_pay) || 0,
+      total_salary: parseFloat(total_salary) || 0,
+      advance_deducted: parseFloat(advance_deducted) || 0,
+      net_salary: net_salary !== undefined ? parseFloat(net_salary) : parseFloat(total_salary),
+      payment_date: pDate,
+      status: 'Paid'
+    });
+
+    const advSnapshot = await advancesColl
+      .where('supplier_id', '==', supplier_id)
+      .where('status', '==', 'pending')
+      .get();
+
+    advSnapshot.docs.forEach(doc => {
+      if (doc.data().date <= end_date) {
+        batch.update(doc.ref, {
+          status: 'deducted',
+          payout_id: payoutRef.id
+        });
+      }
+    });
+  }
+
+  await batch.commit();
+  res.json({ message: 'Payouts recorded successfully.' });
+}));
+
+// Get payout history
+app.get('/api/payroll/history', asyncHandler(async (req, res) => {
+  const suppliersSnapshot = await db.collection('suppliers').get();
+  const suppliers = {};
+  suppliersSnapshot.docs.forEach(doc => {
+    suppliers[doc.id] = doc.data().name;
+  });
+
+  const payoutsSnapshot = await db.collection('salary_payouts').get();
+  const payouts = payoutsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  const advancesSnapshot = await db.collection('advances').get();
+  const advances = advancesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  payouts.forEach(payout => {
+    payout.supplier_name = suppliers[payout.supplier_id] || 'Unknown';
+    payout.advances = advances.filter(a => a.payout_id === payout.id)
+      .map(a => ({ amount: a.amount, date: a.date, remarks: a.remarks }));
+    payout.advances.sort((a, b) => a.date.localeCompare(b.date));
+  });
+
+  payouts.sort((a, b) => b.payment_date.localeCompare(a.payment_date));
+  res.json(payouts);
+}));
+
+
+// ==================== SYSTEM CONFIGURATION ROUTES ====================
+
+// Get system settings (excluding password)
+app.get('/api/settings', asyncHandler(async (req, res) => {
+  const snapshot = await db.collection('settings').get();
+  const result = {};
+  snapshot.docs.forEach(doc => {
+    if (doc.id !== 'admin_password') {
+      result[doc.id] = doc.id === 'kot_commission_limit' ? parseFloat(doc.data().value) : doc.data().value;
+    }
+  });
+  res.json(result);
+}));
+
+// Update system settings (excluding password)
+app.put('/api/settings', asyncHandler(async (req, res) => {
+  const { kot_commission_limit, admin_name } = req.body;
+
+  if (kot_commission_limit !== undefined) {
+    const parsedLimit = parseFloat(kot_commission_limit);
+    if (isNaN(parsedLimit) || parsedLimit < 0) {
+      return res.status(400).json({ error: 'Commission threshold must be a valid positive number' });
+    }
+    await db.collection('settings').doc('kot_commission_limit').set({ value: parsedLimit.toString() });
+  }
+
+  if (admin_name !== undefined) {
+    await db.collection('settings').doc('admin_name').set({ value: admin_name.toString().trim() });
+  }
+
+  res.json({ message: 'Settings updated successfully' });
+}));
+
+// Authentication endpoint
+app.post('/api/auth/login', asyncHandler(async (req, res) => {
+  const { password } = req.body;
+  if (!password) {
+    return res.status(400).json({ error: 'Password is required' });
+  }
+
+  const doc = await db.collection('settings').doc('admin_password').get();
+  const correctPassword = doc.exists ? doc.data().value : 'cosmo1111';
+
+  if (password === correctPassword) {
+    res.json({ success: true, message: 'Authenticated successfully' });
+  } else {
+    res.status(401).json({ success: false, error: 'Invalid password' });
+  }
+}));
+
+// Change admin password
+app.post('/api/settings/change-password', asyncHandler(async (req, res) => {
+  const { current_password, new_password } = req.body;
+  if (!current_password || !new_password) {
+    return res.status(400).json({ error: 'Current password and new password are required' });
+  }
+
+  const docRef = db.collection('settings').doc('admin_password');
+  const doc = await docRef.get();
+  const correctPassword = doc.exists ? doc.data().value : 'cosmo1111';
+
+  if (current_password !== correctPassword) {
+    return res.status(401).json({ error: 'Current password is incorrect' });
+  }
+
+  await docRef.set({ value: new_password });
+  res.json({ message: 'Password updated successfully' });
+}));
+
+
+// ==================== DASHBOARD STATS ROUTE ====================
+
+app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
+  const today = new Date().toISOString().split('T')[0];
+  const monthStart = today.substring(0, 7) + '-01';
+
+  const thresholdDoc = await db.collection('settings').doc('kot_commission_limit').get();
+  const threshold = thresholdDoc.exists ? parseFloat(thresholdDoc.data().value) : 250;
+
+  // Fetch collections
+  const suppliersSnapshot = await db.collection('suppliers').get();
+  const suppliers = suppliersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  const kotSnapshot = await db.collection('kot_bills').get();
+  const allKots = kotSnapshot.docs.map(doc => doc.data());
+
+  const attendanceSnapshot = await db.collection('attendance').get();
+  const allAttendance = attendanceSnapshot.docs.map(doc => doc.data());
+
+  const payoutsSnapshot = await db.collection('salary_payouts').get();
+  const allPayouts = payoutsSnapshot.docs.map(doc => doc.data());
+
+  // 1. Today's KOT volume
+  const todayKots = allKots.filter(k => k.date === today);
+  const todayKotTotal = todayKots.reduce((sum, k) => sum + (k.amount || 0), 0);
+
+  // 2. Active suppliers count
+  const activeSuppliersCount = suppliers.filter(s => s.status === 'active').length;
+
+  // 3. Today's checked-in (present/half-day) suppliers
+  const presentTodayCount = allAttendance.filter(a => a.date === today && (a.status === 'Present' || a.status === 'Half Day')).length;
+
+  // 4. Month-to-date KOT volume
+  const mtdKots = allKots.filter(k => k.date >= monthStart && k.date <= today);
+  const mtdKotTotal = mtdKots.reduce((sum, k) => sum + (k.amount || 0), 0);
+
+  // 5. Month-to-date estimated payout
+  const mtdGrouped = {};
+  mtdKots.forEach(k => {
+    const key = `${k.supplier_id}_${k.date}`;
+    mtdGrouped[key] = (mtdGrouped[key] || 0) + (k.amount || 0);
+  });
+
+  let estimatedMtdCommission = 0;
+  Object.keys(mtdGrouped).forEach(key => {
+    const dailyTotal = mtdGrouped[key];
+    const dailyComm = dailyTotal * 0.05;
+    if (dailyComm >= threshold) {
+      estimatedMtdCommission += dailyComm;
+    }
+  });
+
+  const mtdAttendance = allAttendance.filter(a => a.date >= monthStart && a.date <= today);
+  let estimatedMtdAttPay = 0;
+  mtdAttendance.forEach(log => {
+    const supplier = suppliers.find(s => s.id === log.supplier_id);
+    if (supplier) {
+      if (log.status === 'Present') {
+        estimatedMtdAttPay += (supplier.basic_daily_wage || 0);
+      } else if (log.status === 'Half Day') {
+        estimatedMtdAttPay += ((supplier.basic_daily_wage || 0) * 0.5);
+      }
+    }
+  });
+
+  const estimatedMtdSalary = estimatedMtdCommission + estimatedMtdAttPay;
+
+  // 5b. Today's Qualified Commission
+  const todayGrouped = {};
+  todayKots.forEach(k => {
+    todayGrouped[k.supplier_id] = (todayGrouped[k.supplier_id] || 0) + (k.amount || 0);
+  });
+  let todayQualifiedCommission = 0;
+  Object.keys(todayGrouped).forEach(supId => {
+    const dailyTotal = todayGrouped[supId];
+    const dailyComm = dailyTotal * 0.05;
+    if (dailyComm >= threshold) {
+      todayQualifiedCommission += dailyComm;
+    }
+  });
+
+  // 6. Today's Average KOT bill size
+  const avgBillToday = todayKots.length > 0 ? (todayKotTotal / todayKots.length) : 0;
+
+  // 7. Top Supplier for the current month
+  const mtdSupplierTotals = {};
+  mtdKots.forEach(k => {
+    mtdSupplierTotals[k.supplier_id] = (mtdSupplierTotals[k.supplier_id] || 0) + (k.amount || 0);
+  });
+  let topSupplier = null;
+  let maxTotal = 0;
+  Object.keys(mtdSupplierTotals).forEach(supId => {
+    const total = mtdSupplierTotals[supId];
+    if (total > maxTotal) {
+      maxTotal = total;
+      const supplier = suppliers.find(s => s.id === supId);
+      if (supplier) {
+        topSupplier = { name: supplier.name, total };
+      }
+    }
+  });
+
+  // 8. Supplier Leaderboard (Sales total in current month)
+  const leaderboard = suppliers.filter(s => s.status === 'active').map(s => {
+    return {
+      name: s.name,
+      total: mtdSupplierTotals[s.id] || 0
+    };
+  });
+  leaderboard.sort((a, b) => b.total - a.total);
+
+  // 9. 7-Day Weekly Trend Array
+  const weekly_trend = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().split('T')[0];
+    weekly_trend.push({ date: dateStr, total: 0 });
+  }
+  weekly_trend.forEach(item => {
+    const dayKots = allKots.filter(k => k.date === item.date);
+    item.total = dayKots.reduce((sum, k) => sum + (k.amount || 0), 0);
+  });
+
+  // 10. Unified Live System Activity Log
+  const recentKotsData = [...allKots];
+  recentKotsData.sort((a, b) => {
+    const dateCompare = b.date.localeCompare(a.date);
+    if (dateCompare !== 0) return dateCompare;
+    return (b.time || '').localeCompare(a.time || '');
+  });
+  const recentKotsSlice = recentKotsData.slice(0, 5);
+
+  const recentAttendanceData = [...allAttendance];
+  recentAttendanceData.sort((a, b) => b.date.localeCompare(a.date));
+  const recentAttendanceSlice = recentAttendanceData.slice(0, 5);
+
+  const recentPayoutsData = [...allPayouts];
+  recentPayoutsData.sort((a, b) => b.payment_date.localeCompare(a.payment_date));
+  const recentPayoutsSlice = recentPayoutsData.slice(0, 5);
+
+  const activities = [];
+
+  recentKotsSlice.forEach(k => {
+    const supplier = suppliers.find(s => s.id === k.supplier_id);
+    const name = supplier ? supplier.name : 'Unknown';
+    activities.push({
+      type: 'kot',
+      date: k.date,
+      time: k.time || '11:00',
+      desc: `${name} logged Bill ${k.bill_number} of ₹${(k.amount || 0).toLocaleString('en-IN')}`,
+      timestamp: new Date(`${k.date}T${k.time || '11:00'}`).getTime()
+    });
+  });
+
+  recentAttendanceSlice.forEach(a => {
+    const supplier = suppliers.find(s => s.id === a.supplier_id);
+    const name = supplier ? supplier.name : 'Unknown';
+    const hr = a.shift === '5-11' ? '17:00' : '11:00';
+    activities.push({
+      type: 'attendance',
+      date: a.date,
+      time: hr,
+      desc: `${name} marked as ${a.status} (Shift: ${a.shift === '11-11' ? '11 AM-11 PM' : a.shift})`,
+      timestamp: new Date(`${a.date}T${hr}`).getTime()
+    });
+  });
+
+  recentPayoutsSlice.forEach(p => {
+    const supplier = suppliers.find(s => s.id === p.supplier_id);
+    const name = supplier ? supplier.name : 'Unknown';
+    activities.push({
+      type: 'payout',
+      date: p.payment_date,
+      time: '23:00',
+      desc: `Disbursed ₹${(p.total_salary || 0).toLocaleString('en-IN')} to ${name} (Period: ${p.start_date} to ${p.end_date})`,
+      timestamp: new Date(`${p.payment_date}T23:00`).getTime()
+    });
+  });
+
+  activities.sort((a, b) => b.timestamp - a.timestamp);
+
+  const dashboardKotsTable = recentKotsSlice.map(k => {
+    const supplier = suppliers.find(s => s.id === k.supplier_id);
+    return {
+      ...k,
+      supplier_name: supplier ? supplier.name : 'Unknown'
+    };
+  });
+
+  res.json({
+    today_date: today,
+    today_kot_total: todayKotTotal,
+    today_qualified_commission: todayQualifiedCommission,
+    active_suppliers_count: activeSuppliersCount,
+    present_suppliers_count: presentTodayCount,
+    mtd_kot_total: mtdKotTotal,
+    mtd_estimated_salary: estimatedMtdSalary,
+    avg_bill_today: avgBillToday,
+    top_supplier: topSupplier,
+    supplier_leaderboard: leaderboard,
+    weekly_trend,
+    recent_activities: activities.slice(0, 6),
+    recent_kots: dashboardKotsTable
+  });
+}));
+
+// ==================== ERROR HANDLING ====================
+
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: err.message || 'Something went wrong on the server' });
+});
+
+// Start the server
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});

@@ -1,32 +1,38 @@
 import admin from 'firebase-admin';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const keyPath = path.join(__dirname, 'serviceAccountKey.json');
 
 let app;
-if (fs.existsSync(keyPath)) {
-  const serviceAccount = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
-  app = admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
-  });
-  console.log('🔥 Firebase Admin SDK initialized with serviceAccountKey.json');
+
+const projectId = process.env.FIREBASE_PROJECT_ID;
+const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+const privateKey = process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined;
+
+if (projectId && clientEmail && privateKey) {
+  console.log('DEBUG: privateKey start =', JSON.stringify(privateKey.substring(0, 50)));
+  try {
+    app = admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId,
+        clientEmail,
+        privateKey
+      })
+    });
+    console.log('🔥 Firebase Admin SDK initialized successfully via Environment Variables.');
+  } catch (error) {
+    console.error('❌ Error: Failed to initialize Firebase Admin with environment credentials:', error.message);
+    process.exit(1);
+  }
 } else {
-  console.warn('⚠️ Warning: Firebase serviceAccountKey.json NOT found at backend/serviceAccountKey.json.');
+  console.warn('⚠️ Warning: Missing FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, or FIREBASE_PRIVATE_KEY in environment.');
   console.warn('Attempting to initialize Firebase Admin with default application credentials...');
   try {
     app = admin.initializeApp();
     console.log('🔥 Firebase Admin SDK initialized with application default credentials.');
   } catch (error) {
     console.error('❌ Error: Firebase Admin SDK failed to initialize.');
-    console.error('Please generate a service account private key in Firebase Console (Project Settings > Service Accounts),');
-    console.error(`save it as "serviceAccountKey.json", and place it in the "backend" directory: ${keyPath}`);
+    console.error('Please configure FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY in your backend/.env file.');
     process.exit(1);
   }
 }
 
 export const firestore = admin.firestore(app);
-// Enable auto-timestamp settings for Firestore
 firestore.settings({ ignoreUndefinedProperties: true });

@@ -3,6 +3,7 @@ import cors from 'cors';
 import { initDb } from './db.js';
 
 const app = express();
+// Dev server port
 const PORT = process.env.PORT || 5000;
 
 app.use(cors());

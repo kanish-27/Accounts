@@ -1179,6 +1179,14 @@ body.light-theme .login-container {
   .printable-attendance-statement th {
     background-color: #f2f2f2 !important;
   }
+
+  .print-stamp {
+    opacity: 0.22 !important;
+    color: #10b981 !important;
+    border-color: #10b981 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
 }
 
 /* Public Landing Page Custom Styles */
@@ -1512,4 +1520,26 @@ body.light-theme .menu-toggle-btn:hover {
     justify-content: center;
     padding: 0.85rem 1.25rem;
   }
+}
+
+/* Print-friendly stamp styling */
+.print-stamp {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-15deg);
+  border: 6px double #10b981;
+  color: #10b981;
+  font-size: 3.5rem;
+  font-weight: 900;
+  padding: 0.4rem 1.5rem;
+  text-transform: uppercase;
+  border-radius: 12px;
+  opacity: 0.22;
+  letter-spacing: 5px;
+  pointer-events: none;
+  z-index: 100;
+  font-family: 'Montserrat', sans-serif;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
 }

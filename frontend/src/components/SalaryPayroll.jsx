@@ -364,24 +364,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
           {/* Printable Payslip Structure */}
           <div className="printable-payslip" style={{ position: 'relative', width: '100%', maxWidth: '600px', padding: '2rem', background: '#fff', color: '#000' }}>
             {printPayslipData.already_paid && (
-              <div style={{
-                position: 'absolute',
-                top: '40%',
-                left: '50%',
-                transform: 'translate(-50%, -50%) rotate(-15deg)',
-                border: '6px double #10b981',
-                color: '#10b981',
-                fontSize: '3.5rem',
-                fontWeight: 900,
-                padding: '0.4rem 1.5rem',
-                textTransform: 'uppercase',
-                borderRadius: '12px',
-                opacity: 0.22,
-                letterSpacing: '5px',
-                pointerEvents: 'none',
-                zIndex: 100,
-                fontFamily: "'Montserrat', sans-serif"
-              }}>
+              <div className="print-stamp">
                 PAID
               </div>
             )}

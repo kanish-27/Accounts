@@ -81,7 +81,7 @@ export default function LandingPage({
 
             <h1 style={{ 
               fontFamily: 'Montserrat', 
-              fontSize: '3rem', 
+              fontSize: 'var(--hero-title-font-size)', 
               fontWeight: 800, 
               maxWidth: '800px', 
               lineHeight: '1.2', 
@@ -157,7 +157,7 @@ export default function LandingPage({
       </header>
 
       {/* Amenities Section */}
-      <section id="amenities" style={{ padding: '5rem 2.5rem', background: 'rgba(255, 255, 255, 0.01)', borderTop: '1px solid var(--border-color)' }}>
+      <section id="amenities" style={{ padding: 'var(--section-padding)', background: 'rgba(255, 255, 255, 0.01)', borderTop: '1px solid var(--border-color)' }}>
         <div style={{ textAlign: 'center', marginBottom: '3.5rem' }}>
           <h2 style={{ fontFamily: 'Montserrat', fontSize: '1.85rem', fontWeight: 700, marginBottom: '0.5rem' }}>
             Exclusive Member Facilities
@@ -218,7 +218,7 @@ export default function LandingPage({
 
       {/* Contact & Location Section */}
       <section style={{ 
-        padding: '4rem 2.5rem', 
+        padding: 'var(--section-padding)', 
         borderTop: '1px solid var(--border-color)', 
         background: 'rgba(255, 255, 255, 0.01)',
         textAlign: 'center' 
@@ -265,7 +265,7 @@ export default function LandingPage({
 
       {/* Footer */}
       <footer style={{ 
-        padding: '2.5rem', 
+        padding: 'var(--section-padding)', 
         borderTop: '1px solid var(--border-color)', 
         textAlign: 'center', 
         fontSize: '0.8rem', 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Wine, LayoutDashboard, Users, CalendarCheck, FileSpreadsheet, Calculator, LogOut, Lock, Check, AlertCircle, Sun, Moon, Settings as SettingsIcon } from 'lucide-react';
+import { Wine, LayoutDashboard, Users, CalendarCheck, FileSpreadsheet, Calculator, LogOut, Lock, Check, AlertCircle, Sun, Moon, Settings as SettingsIcon, Menu, X } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import Suppliers from './components/Suppliers';
 import Attendance from './components/Attendance';
@@ -17,6 +17,7 @@ function App() {
   const [currentTab, setCurrentTab] = useState('dashboard');
   const [toast, setToast] = useState(null); // { message, type: 'success' | 'error' }
   const [theme, setTheme] = useState('dark');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Set initial theme on mount
   useEffect(() => {
@@ -145,8 +146,28 @@ function App() {
   // MAIN SYSTEM RENDER
   return (
     <div className="app-container">
+      {/* Mobile Header Bar */}
+      <header className="mobile-header">
+        <button onClick={() => setSidebarOpen(!sidebarOpen)} className="menu-toggle-btn" aria-label="Toggle navigation menu">
+          {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
+        </button>
+        <div className="mobile-header-brand">
+          <Wine size={20} className="logo-icon" style={{ width: '1.5rem', height: '1.5rem' }} />
+          <div>
+            <div className="mobile-header-text">Udumalai Cosmo</div>
+            <div className="mobile-header-subtext">Recreation Club</div>
+          </div>
+        </div>
+        <div style={{ width: '38px' }}></div> {/* Spacer to center center header info */}
+      </header>
+
+      {/* Sidebar overlay backdrop */}
+      {sidebarOpen && (
+        <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)}></div>
+      )}
+
       {/* Sidebar Navigation */}
-      <aside className="sidebar">
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="logo-container">
           <Wine className="logo-icon" />
           <div>
@@ -159,7 +180,10 @@ function App() {
           <li>
             <div 
               className={`nav-link ${currentTab === 'dashboard' ? 'active' : ''}`}
-              onClick={() => setCurrentTab('dashboard')}
+              onClick={() => {
+                setCurrentTab('dashboard');
+                setSidebarOpen(false);
+              }}
             >
               <LayoutDashboard size={18} />
               Dashboard
@@ -168,7 +192,10 @@ function App() {
           <li>
             <div 
               className={`nav-link ${currentTab === 'suppliers' ? 'active' : ''}`}
-              onClick={() => setCurrentTab('suppliers')}
+              onClick={() => {
+                setCurrentTab('suppliers');
+                setSidebarOpen(false);
+              }}
             >
               <Users size={18} />
               Suppliers Directory
@@ -177,7 +204,10 @@ function App() {
           <li>
             <div 
               className={`nav-link ${currentTab === 'attendance' ? 'active' : ''}`}
-              onClick={() => setCurrentTab('attendance')}
+              onClick={() => {
+                setCurrentTab('attendance');
+                setSidebarOpen(false);
+              }}
             >
               <CalendarCheck size={18} />
               Daily Attendance
@@ -186,7 +216,10 @@ function App() {
           <li>
             <div 
               className={`nav-link ${currentTab === 'kot' ? 'active' : ''}`}
-              onClick={() => setCurrentTab('kot')}
+              onClick={() => {
+                setCurrentTab('kot');
+                setSidebarOpen(false);
+              }}
             >
               <FileSpreadsheet size={18} />
               KOT Bills Log
@@ -195,7 +228,10 @@ function App() {
           <li>
             <div 
               className={`nav-link ${currentTab === 'payroll' ? 'active' : ''}`}
-              onClick={() => setCurrentTab('payroll')}
+              onClick={() => {
+                setCurrentTab('payroll');
+                setSidebarOpen(false);
+              }}
             >
               <Calculator size={18} />
               Salary & Payroll
@@ -204,7 +240,10 @@ function App() {
           <li>
             <div 
               className={`nav-link ${currentTab === 'settings' ? 'active' : ''}`}
-              onClick={() => setCurrentTab('settings')}
+              onClick={() => {
+                setCurrentTab('settings');
+                setSidebarOpen(false);
+              }}
             >
               <SettingsIcon size={18} />
               System Settings

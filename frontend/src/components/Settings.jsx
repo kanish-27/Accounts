@@ -98,7 +98,7 @@ export default function Settings({ showToast, API_BASE, settings, onSettingsUpda
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem', alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '2rem', alignItems: 'start' }}>
         {/* General Settings Panel */}
         <form onSubmit={handleSaveGeneral} className="glass-panel" style={{ padding: '1.75rem', margin: 0 }}>
           <h2 className="section-title" style={{ marginBottom: '1.5rem' }}>

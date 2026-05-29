@@ -290,7 +290,7 @@ export default function Suppliers({ showToast, API_BASE }) {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.2fr', gap: '2rem' }}>
+        <div className="profile-detail-grid">
           {/* Left Column wrapper for Profile and Advances */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             {/* Supplier details card */}

@@ -160,7 +160,7 @@ export default function KotBills({ showToast, API_BASE }) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.2fr', gap: '2rem' }}>
+      <div className="kot-layout-grid">
         {/* Left: Input Form Card */}
         <div className="card gold-header" style={{ height: 'fit-content' }}>
           <div className="section-title">
@@ -254,7 +254,7 @@ export default function KotBills({ showToast, API_BASE }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           
           {/* Summary Mini Cards */}
-          <div className="card-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', marginBottom: 0 }}>
+          <div className="card-grid kot-summary-grid" style={{ marginBottom: 0 }}>
             <div className="card gold-header" style={{ padding: '1rem 1.25rem' }}>
               <span className="card-title" style={{ fontSize: '0.75rem' }}>Total KOT Sum</span>
               <span className="card-value" style={{ fontSize: '1.5rem', marginBottom: 0 }}>{formatCurrency(totalAmount)}</span>

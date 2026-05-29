@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Wine, LayoutDashboard, Users, CalendarCheck, FileSpreadsheet, Calculator, LogOut, Lock, Check, AlertCircle, Sun, Moon, Settings as SettingsIcon, Menu, X } from 'lucide-react';
+import { Wine, LayoutDashboard, Users, CalendarCheck, FileSpreadsheet, Calculator, LogOut, Lock, Check, AlertCircle, Sun, Moon, Settings as SettingsIcon, Menu, X, Download } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import Suppliers from './components/Suppliers';
 import Attendance from './components/Attendance';
@@ -18,6 +18,26 @@ function App() {
   const [toast, setToast] = useState(null); // { message, type: 'success' | 'error' }
   const [theme, setTheme] = useState('dark');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [installPrompt, setInstallPrompt] = useState(null);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    console.log(`PWA install outcome: ${outcome}`);
+    setInstallPrompt(null);
+  };
 
   // Set initial theme on mount
   useEffect(() => {
@@ -139,6 +159,8 @@ function App() {
         theme={theme}
         toggleTheme={toggleTheme}
         isClubOpen={isClubOpen}
+        installPrompt={installPrompt}
+        onInstall={handleInstallClick}
       />
     );
   }
@@ -262,6 +284,12 @@ function App() {
             {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />} 
             {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
           </button>
+
+          {installPrompt && (
+            <button onClick={handleInstallClick} className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: '0.5rem', fontSize: '0.85rem', display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+              <Download size={14} /> Install Web App
+            </button>
+          )}
 
           <button onClick={handleLogout} className="btn btn-secondary btn-sm" style={{ width: '100%', marginTop: '0.5rem', fontSize: '0.85rem', display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
             <LogOut size={14} /> Lock Dashboard

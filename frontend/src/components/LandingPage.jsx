@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Wine, Users, Gamepad2, Utensils, ShieldAlert, Clock, ChevronRight, Sun, Moon, Snowflake, Home } from 'lucide-react';
+import { Wine, Users, Gamepad2, Utensils, ShieldAlert, Clock, ChevronRight, Sun, Moon, Snowflake, Home, Download } from 'lucide-react';
 
 export default function LandingPage({ 
   onLogin, 
@@ -8,7 +8,9 @@ export default function LandingPage({
   toast, 
   theme, 
   toggleTheme, 
-  isClubOpen 
+  isClubOpen,
+  installPrompt,
+  onInstall
 }) {
   const [showLogin, setShowLogin] = useState(false);
   const [time, setTime] = useState(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
@@ -45,6 +47,16 @@ export default function LandingPage({
           >
             {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           </button>
+
+          {installPrompt && (
+            <button 
+              onClick={onInstall} 
+              className="btn btn-secondary btn-sm"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', border: '1px solid var(--border-color)' }}
+            >
+              <Download size={14} /> Install App
+            </button>
+          )}
           
           <button 
             onClick={() => setShowLogin(true)} 

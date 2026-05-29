@@ -315,6 +315,59 @@ app.post('/api/kot', asyncHandler(async (req, res) => {
   res.status(201).json({ id: newBill.id, ...newBill.data(), supplier_name: supplierName });
 }));
 
+// Bulk Add KOT bills
+app.post('/api/kot/bulk', asyncHandler(async (req, res) => {
+  const { bills } = req.body;
+  
+  if (!bills || !Array.isArray(bills)) {
+    return res.status(400).json({ error: 'Bills array is required' });
+  }
+
+  const batch = db.batch();
+  const suppliersSnapshot = await db.collection('suppliers').get();
+  const suppliers = {};
+  suppliersSnapshot.docs.forEach(doc => {
+    suppliers[doc.id] = doc.data().name;
+  });
+
+  const addedBills = [];
+
+  for (const bill of bills) {
+    const { supplier_id, bill_number, amount, date, time, remarks } = bill;
+    
+    if (!supplier_id || !bill_number || amount === undefined) {
+      continue;
+    }
+
+    const supplierIdStr = supplier_id.toString();
+    const numericAmount = parseFloat(amount);
+    const currentDate = date || new Date().toISOString().split('T')[0];
+    
+    let currentTime = time;
+    if (!currentTime) {
+      const now = new Date();
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      currentTime = `${hours}:${minutes}`;
+    }
+
+    const docRef = db.collection('kot_bills').doc();
+    const data = {
+      supplier_id: supplierIdStr,
+      bill_number,
+      amount: numericAmount,
+      date: currentDate,
+      time: currentTime,
+      remarks: remarks || ''
+    };
+    batch.set(docRef, data);
+    addedBills.push({ id: docRef.id, ...data, supplier_name: suppliers[supplierIdStr] || 'Unknown' });
+  }
+
+  await batch.commit();
+  res.status(201).json(addedBills);
+}));
+
 // Delete KOT bill
 app.delete('/api/kot/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;

@@ -1,18 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Wine, Plus, Search, Filter, Trash2, Calendar, User, DollarSign } from 'lucide-react';
+import { Wine, Plus, Search, Filter, Trash2, Calendar, User, DollarSign, Upload, X, CheckCircle, FileSpreadsheet } from 'lucide-react';
 
 export default function KotBills({ showToast, API_BASE }) {
   const [bills, setBills] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // New KOT Form State
-  const [supplierId, setSupplierId] = useState('');
-  const [billNumber, setBillNumber] = useState('');
-  const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [time, setTime] = useState('');
-  const [remarks, setRemarks] = useState('');
+  // CSV Import States
+  const [csvFile, setCsvFile] = useState(null);
+  const [dragActive, setDragActive] = useState(false);
+  const [parsedResults, setParsedResults] = useState(null);
+  const [importing, setImporting] = useState(false);
 
   // Filters State
   const [filterSupplier, setFilterSupplier] = useState('');
@@ -62,61 +60,323 @@ export default function KotBills({ showToast, API_BASE }) {
     fetchBills();
   }, [filterSupplier, filterStartDate, filterEndDate]);
 
-  // Set default time to current on focus/load
-  useEffect(() => {
-    const now = new Date();
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    setTime(`${hours}:${minutes}`);
-  }, [bills]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!supplierId) {
-      showToast('Please select a supplier', 'error');
-      return;
-    }
-    if (!billNumber.trim()) {
-      showToast('Please enter KOT bill number', 'error');
-      return;
-    }
-    if (!amount || parseFloat(amount) <= 0) {
-      showToast('Please enter a valid KOT amount', 'error');
-      return;
-    }
 
-    const payload = {
-      supplier_id: supplierId.toString(),
-      bill_number: billNumber.trim(),
-      amount: parseFloat(amount),
-      date,
-      time,
-      remarks: remarks.trim()
+  // CSV Helper Functions
+  const parseCSV = (text) => {
+    const lines = [];
+    let row = [""];
+    let inQuotes = false;
+    const cleanField = (val) => {
+      if (!val) return '';
+      return val.trim().replace(/^["']|["']$/g, '').trim();
     };
 
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      const next = text[i + 1];
+
+      if (c === '"') {
+        if (inQuotes && next === '"') {
+          row[row.length - 1] += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (c === ',' && !inQuotes) {
+        row.push('');
+      } else if ((c === '\r' || c === '\n') && !inQuotes) {
+        if (c === '\r' && next === '\n') {
+          i++;
+        }
+        lines.push(row.map(cleanField));
+        row = [""];
+      } else {
+        row[row.length - 1] += c;
+      }
+    }
+    if (row.length > 1 || row[0] !== '') {
+      lines.push(row.map(cleanField));
+    }
+    return lines;
+  };
+
+  const processCSVData = (lines) => {
+    if (lines.length < 2) {
+      return { error: 'CSV file is empty or missing data rows.' };
+    }
+
+    // Identify columns
+    const headers = lines[0].map(h => h.toLowerCase().replace(/[\s_-]+/g, ''));
+    
+    const categoryIndex = (() => {
+      let idx = headers.findIndex(h => h === 'categoryname' || h === 'category_name');
+      if (idx !== -1) return idx;
+      return headers.findIndex(h => h.includes('category'));
+    })();
+
+    const assignIndex = (() => {
+      let idx = headers.findIndex(h => h === 'assignto' || h === 'assign_to');
+      if (idx !== -1) return idx;
+      return headers.findIndex(h => h.includes('assign') || h.includes('supplier') || h.includes('staff'));
+    })();
+
+    const totalIndex = (() => {
+      let idx = headers.findIndex(h => h === 'itemtotal' || h === 'item_total' || h === 'itemsum');
+      if (idx !== -1) return idx;
+      idx = headers.findIndex(h => h.includes('itemtotal'));
+      if (idx !== -1) return idx;
+      idx = headers.findIndex(h => h === 'total');
+      if (idx !== -1) return idx;
+      idx = headers.findIndex(h => h.includes('total'));
+      if (idx !== -1) return idx;
+      return headers.findIndex(h => h.includes('amount') || h.includes('price'));
+    })();
+
+    const dateIndex = (() => {
+      let idx = headers.findIndex(h => h === 'date' || h === 'createdat' || h === 'created_at');
+      if (idx !== -1) return idx;
+      return headers.findIndex(h => h.includes('date') || h.includes('createdat') || h.includes('time'));
+    })();
+
+    if (categoryIndex === -1) {
+      return { error: 'Could not find "category_name" column in CSV.' };
+    }
+    if (assignIndex === -1) {
+      return { error: 'Could not find "assign_to" column in CSV.' };
+    }
+    if (totalIndex === -1) {
+      return { error: 'Could not find "item_total" column in CSV.' };
+    }
+
+    let ignoredCharges = 0;
+    let matchedSupplierCount = 0;
+    let unmatchedSupplierCount = 0;
+    let totalRows = lines.length - 1;
+    const matchedRows = [];
+
+    const parseDateToYYYYMMDD = (dateStr) => {
+      if (!dateStr) return null;
+      const clean = dateStr.trim();
+      // DD/MM/YYYY or DD-MM-YYYY
+      const dmyMatch = clean.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+      if (dmyMatch) {
+        return `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
+      }
+      // YYYY-MM-DD
+      const ymdMatch = clean.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+      if (ymdMatch) {
+        return `${ymdMatch[1]}-${ymdMatch[2].padStart(2, '0')}-${ymdMatch[3].padStart(2, '0')}`;
+      }
+      try {
+        const d = new Date(clean);
+        if (!isNaN(d.getTime())) {
+          return d.toISOString().split('T')[0];
+        }
+      } catch (e) {}
+      return null;
+    };
+
+    const isSupplierMatch = (assignTo, supplierName) => {
+      if (!assignTo || !supplierName) return false;
+      const clean = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+      return clean(assignTo) === clean(supplierName);
+    };
+
+    const findSupplier = (assignTo) => {
+      if (!assignTo) return null;
+      return suppliers.find(s => isSupplierMatch(assignTo, s.name));
+    };
+
+    for (let i = 1; i < lines.length; i++) {
+      const row = lines[i];
+      if (row.length === 1 && row[0] === '') continue;
+      if (row.length <= Math.max(categoryIndex, assignIndex, totalIndex)) continue;
+
+      const category = row[categoryIndex] || '';
+      const assignTo = row[assignIndex] || '';
+      const itemTotalStr = row[totalIndex] || '';
+      const dateStr = dateIndex !== -1 ? row[dateIndex] : '';
+
+      // Reject if category_name represents charges (e.g. "charges", "charge", "service charges", etc.)
+      const catLower = category.trim().toLowerCase();
+      if (catLower === 'charges' || catLower === 'charge' || catLower.includes('charge')) {
+        ignoredCharges++;
+        continue;
+      }
+
+      const matchedSup = findSupplier(assignTo);
+      if (matchedSup) {
+        matchedSupplierCount++;
+        const cleanAmt = itemTotalStr.replace(/[^0-9.]/g, '');
+        const amt = parseFloat(cleanAmt) || 0;
+        const parsedDate = parseDateToYYYYMMDD(dateStr) || new Date().toISOString().split('T')[0];
+
+        matchedRows.push({
+          supplierId: matchedSup.id,
+          supplierName: matchedSup.name,
+          category,
+          assignTo,
+          amount: amt,
+          date: parsedDate
+        });
+      } else {
+        unmatchedSupplierCount++;
+      }
+    }
+
+    const grouped = {};
+    matchedRows.forEach(row => {
+      const key = `${row.supplierId}_${row.date}`;
+      if (!grouped[key]) {
+        grouped[key] = {
+          supplierId: row.supplierId,
+          supplierName: row.supplierName,
+          date: row.date,
+          amount: 0,
+          count: 0
+        };
+      }
+      grouped[key].amount += row.amount;
+      grouped[key].count += 1;
+    });
+
+    const groupedBills = Object.keys(grouped).map(key => {
+      const g = grouped[key];
+      const formattedDateForBill = g.date.replace(/-/g, '');
+      return {
+        supplier_id: g.supplierId,
+        supplier_name: g.supplierName,
+        date: g.date,
+        amount: g.amount,
+        count: g.count,
+        bill_number: `CSV-${formattedDateForBill}-${g.supplierId}`
+      };
+    });
+
+    groupedBills.sort((a, b) => {
+      const dateComp = b.date.localeCompare(a.date);
+      if (dateComp !== 0) return dateComp;
+      return a.supplier_name.localeCompare(b.supplier_name);
+    });
+
+    return {
+      totalRows,
+      ignoredCharges,
+      matchedSupplierCount,
+      unmatchedSupplierCount,
+      matchedRows,
+      groupedBills
+    };
+  };
+
+  const handleDrag = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      handleFileSelected(file);
+    }
+  };
+
+  const handleFileChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      handleFileSelected(file);
+    }
+  };
+
+  const handleFileSelected = (file) => {
+    if (!file.name.endsWith('.csv')) {
+      showToast('Only CSV files are supported', 'error');
+      return;
+    }
+
+    setCsvFile(file);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target.result;
+      const parsedLines = parseCSV(text);
+      const results = processCSVData(parsedLines);
+      setParsedResults(results);
+      if (results.error) {
+        showToast(results.error, 'error');
+      } else {
+        showToast(`Successfully parsed CSV. Matched ${results.matchedSupplierCount} items.`, 'success');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleImportSubmit = async () => {
+    if (!parsedResults || !parsedResults.groupedBills || parsedResults.groupedBills.length === 0) {
+      showToast('No matching records to import', 'error');
+      return;
+    }
+
+    setImporting(true);
     try {
-      const res = await fetch(`${API_BASE}/kot`, {
+      const payload = {
+        bills: parsedResults.groupedBills.map(b => ({
+          supplier_id: b.supplier_id.toString(),
+          bill_number: b.bill_number,
+          amount: b.amount,
+          date: b.date,
+          time: '12:00',
+          remarks: `CSV Import - ${b.count} items (Excluded ${parsedResults.ignoredCharges} charges)`
+        }))
+      };
+
+      const res = await fetch(`${API_BASE}/kot/bulk`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
-      if (!res.ok) throw new Error('Failed to add KOT bill');
-      showToast(`KOT Bill ${billNumber} logged successfully`, 'success');
+      if (!res.ok) throw new Error('Failed to import KOT bills');
+      const data = await res.json();
+      showToast(`Successfully imported ${data.length} KOT bills`, 'success');
       
-      // Reset form
-      setBillNumber('');
-      setAmount('');
-      setRemarks('');
-      
-      // Refresh list
+      setCsvFile(null);
+      setParsedResults(null);
       fetchBills();
     } catch (err) {
       console.error(err);
-      showToast('Error saving KOT bill', 'error');
+      showToast('Error importing KOT bills', 'error');
+    } finally {
+      setImporting(false);
     }
   };
+
+  // Re-process CSV when suppliers list changes
+  useEffect(() => {
+    if (csvFile && suppliers.length > 0) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target.result;
+        const parsedLines = parseCSV(text);
+        const results = processCSVData(parsedLines);
+        setParsedResults(results);
+      };
+      reader.readAsText(csvFile);
+    } else {
+      setParsedResults(null);
+    }
+  }, [csvFile, suppliers]);
+
+
 
   const handleDelete = async (id, billNo) => {
     if (!window.confirm(`Are you sure you want to delete KOT Bill: ${billNo}?`)) {
@@ -167,87 +427,136 @@ export default function KotBills({ showToast, API_BASE }) {
             <Wine size={18} color="var(--accent-gold-glow)" /> Log KOT Bill
           </div>
           
-          <form onSubmit={handleSubmit} style={{ marginTop: '0.5rem' }}>
-            <div className="form-group">
-              <label>Select Supplier *</label>
-              <select 
-                value={supplierId} 
-                onChange={(e) => setSupplierId(e.target.value)}
-                className="form-control"
-                required
+          <div style={{ marginTop: '1rem' }}>
+            {!csvFile ? (
+              <div 
+                className={`csv-upload-zone ${dragActive ? 'drag-active' : ''}`}
+                onDragEnter={handleDrag}
+                onDragOver={handleDrag}
+                onDragLeave={handleDrag}
+                onDrop={handleDrop}
+                onClick={() => document.getElementById('csv-file-input').click()}
               >
-                <option value="">-- Choose Staff --</option>
-                {suppliers.map(sup => (
-                  <option key={sup.id} value={sup.id}>{sup.name} (₹{sup.basic_daily_wage}/day)</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>KOT Bill Number *</label>
-              <input 
-                type="text" 
-                value={billNumber} 
-                onChange={(e) => setBillNumber(e.target.value)} 
-                className="form-control" 
-                placeholder="e.g. KOT-1049"
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Bill Amount (₹) *</label>
-              <input 
-                type="number" 
-                value={amount} 
-                onChange={(e) => setAmount(e.target.value)} 
-                className="form-control" 
-                placeholder="e.g. 10000"
-                min="1"
-                step="0.01"
-                required
-              />
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
-                Est. Commission (5%): <strong style={{ color: 'var(--accent-gold-glow)' }}>{formatCurrency(amount ? amount * 0.05 : 0)}</strong>
-              </span>
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label>Date</label>
                 <input 
-                  type="date" 
-                  value={date} 
-                  onChange={(e) => setDate(e.target.value)} 
-                  className="form-control"
+                  id="csv-file-input"
+                  type="file" 
+                  accept=".csv" 
+                  onChange={handleFileChange} 
+                  style={{ display: 'none' }}
                 />
+                <Upload className="csv-upload-icon" size={32} />
+                <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Drag & Drop CSV File</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>or click to browse files</div>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                  Requires columns: category_name, assign_to, item_total
+                </div>
               </div>
-              <div className="form-group">
-                <label>Time</label>
-                <input 
-                  type="time" 
-                  value={time} 
-                  onChange={(e) => setTime(e.target.value)} 
-                  className="form-control"
-                />
+            ) : (
+              <div>
+                <div className="csv-file-info">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden' }}>
+                    <FileSpreadsheet size={18} className="text-gold" />
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px' }}>
+                      {csvFile.name}
+                    </span>
+                  </div>
+                  <button 
+                    type="button"
+                    className="btn btn-icon btn-danger"
+                    style={{ padding: '0.25rem', height: 'auto', width: 'auto' }}
+                    onClick={() => { setCsvFile(null); setParsedResults(null); }}
+                    title="Remove file"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+
+                {parsedResults && (
+                  <div className="csv-preview-card">
+                    {parsedResults.error ? (
+                      <div style={{ color: '#ef4444', fontSize: '0.8rem', textAlign: 'center' }}>
+                        <strong>Error:</strong> {parsedResults.error}
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="csv-preview-title" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          <CheckCircle size={14} className="text-green" />
+                          Parsed KOT Data
+                        </div>
+                        
+                        <div className="csv-stats-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem', marginBottom: '1rem' }}>
+                          <div className="csv-stat-item">
+                            <span className="csv-stat-label">Matched Rows</span>
+                            <span className="csv-stat-val text-gold">{parsedResults.matchedSupplierCount}</span>
+                          </div>
+                          <div className="csv-stat-item">
+                            <span className="csv-stat-label">Excluded Charges</span>
+                            <span className="csv-stat-val" style={{ color: 'var(--text-muted)' }}>{parsedResults.ignoredCharges}</span>
+                          </div>
+                          <div className="csv-stat-item">
+                            <span className="csv-stat-label">Unmatched Rows</span>
+                            <span className="csv-stat-val" style={{ color: parsedResults.unmatchedSupplierCount > 0 ? '#f59e0b' : 'var(--text-muted)' }}>
+                              {parsedResults.unmatchedSupplierCount}
+                            </span>
+                          </div>
+                          <div className="csv-stat-item">
+                            <span className="csv-stat-label">Total Rows</span>
+                            <span className="csv-stat-val">{parsedResults.totalRows}</span>
+                          </div>
+                        </div>
+
+                        {parsedResults.groupedBills.length === 0 ? (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textAlign: 'center', padding: '1rem' }}>
+                            No matching KOT entries found for any active suppliers.
+                          </div>
+                        ) : (
+                          <>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>
+                              Parsed KOT Statements:
+                            </div>
+                            <div className="csv-preview-table-wrapper">
+                              <table className="csv-preview-table">
+                                <thead>
+                                  <tr>
+                                    <th>Supplier</th>
+                                    <th>Date</th>
+                                    <th>Items</th>
+                                    <th style={{ textAlign: 'right' }}>Total Sum</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {parsedResults.groupedBills.map((b, idx) => (
+                                    <tr key={idx}>
+                                      <td style={{ fontWeight: 600 }}>{b.supplier_name}</td>
+                                      <td>{b.date}</td>
+                                      <td>{b.count} rows</td>
+                                      <td className="text-gold" style={{ textAlign: 'right', fontWeight: 600 }}>
+                                        {formatCurrency(b.amount)}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            <button 
+                              type="button" 
+                              className="btn btn-primary" 
+                              style={{ width: '100%', marginTop: '0.5rem' }}
+                              onClick={handleImportSubmit}
+                              disabled={importing}
+                            >
+                              {importing ? 'Importing...' : `Confirm & Import (${parsedResults.groupedBills.length} Statements)`}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
-
-            <div className="form-group">
-              <label>Remarks</label>
-              <input 
-                type="text" 
-                value={remarks} 
-                onChange={(e) => setRemarks(e.target.value)} 
-                className="form-control" 
-                placeholder="Table no, extra info, etc."
-              />
-            </div>
-
-            <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }}>
-              <Plus size={18} /> Add KOT Entry
-            </button>
-          </form>
+            )}
+          </div>
         </div>
 
         {/* Right: Interactive Logs Panel */}

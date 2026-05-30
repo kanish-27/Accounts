@@ -529,6 +529,9 @@ app.get('/api/payroll/calculate', asyncHandler(async (req, res) => {
 
     let totalKotAmount = 0;
     let commissionAmount = 0;
+    let qualifiedDaysCount = 0;
+    let qualifiedKotAmount = 0;
+    let totalDaysWithKots = Object.keys(dailyTotals).length;
 
     Object.keys(dailyTotals).forEach(date => {
       const dailyTotal = dailyTotals[date];
@@ -537,6 +540,8 @@ app.get('/api/payroll/calculate', asyncHandler(async (req, res) => {
       const dailyComm = dailyTotal * 0.05;
       if (dailyComm >= threshold) {
         commissionAmount += dailyComm;
+        qualifiedDaysCount++;
+        qualifiedKotAmount += dailyTotal;
       }
     });
 
@@ -567,6 +572,9 @@ app.get('/api/payroll/calculate', asyncHandler(async (req, res) => {
       attendance_pay: attendancePay,
       total_kot_amount: totalKotAmount,
       commission_amount: commissionAmount,
+      qualified_days_count: qualifiedDaysCount,
+      qualified_kot_amount: qualifiedKotAmount,
+      total_days_with_kots: totalDaysWithKots,
       total_salary: totalSalary,
       advance_deducted: advanceDeducted,
       net_salary: netSalary,
@@ -600,7 +608,7 @@ app.post('/api/payroll/payout', asyncHandler(async (req, res) => {
   const advancesColl = db.collection('advances');
 
   for (const record of records) {
-    const { supplier_id, attendance_days, total_kot_amount, commission_amount, attendance_pay, total_salary, advance_deducted, net_salary } = record;
+    const { supplier_id, attendance_days, total_kot_amount, commission_amount, attendance_pay, total_salary, advance_deducted, net_salary, qualified_days_count, qualified_kot_amount, total_days_with_kots } = record;
     
     const supplierIdStr = supplier_id.toString();
 
@@ -612,6 +620,9 @@ app.post('/api/payroll/payout', asyncHandler(async (req, res) => {
       attendance_days: parseFloat(attendance_days) || 0,
       total_kot_amount: parseFloat(total_kot_amount) || 0,
       commission_amount: parseFloat(commission_amount) || 0,
+      qualified_days_count: parseInt(qualified_days_count) || 0,
+      qualified_kot_amount: parseFloat(qualified_kot_amount) || 0,
+      total_days_with_kots: parseInt(total_days_with_kots) || 0,
       attendance_pay: parseFloat(attendance_pay) || 0,
       total_salary: parseFloat(total_salary) || 0,
       advance_deducted: parseFloat(advance_deducted) || 0,

@@ -89,6 +89,9 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
           attendance_days: r.attendance_days,
           total_kot_amount: r.total_kot_amount,
           commission_amount: r.commission_amount,
+          qualified_days_count: r.qualified_days_count,
+          qualified_kot_amount: r.qualified_kot_amount,
+          total_days_with_kots: r.total_days_with_kots,
           attendance_pay: r.attendance_pay,
           total_salary: r.total_salary,
           advance_deducted: r.advance_deducted,
@@ -422,6 +425,17 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
                     <span style={{ fontSize: '0.75rem', color: '#666' }}>
                       Commission Rate: 5.0% (Qualifies daily &gt;= ₹{settings?.kot_commission_limit || 250})
                     </span>
+                    {printPayslipData.total_days_with_kots !== undefined && printPayslipData.total_days_with_kots > 0 && (
+                      printPayslipData.qualified_days_count < printPayslipData.total_days_with_kots ? (
+                        <span style={{ color: '#666', fontStyle: 'italic', display: 'block', marginTop: '0.15rem', fontSize: '0.7rem' }}>
+                          * Only {printPayslipData.qualified_days_count} of {printPayslipData.total_days_with_kots} active days qualified (Qualified KOT: {formatCurrency(printPayslipData.qualified_kot_amount)})
+                        </span>
+                      ) : (
+                        <span style={{ color: '#16a34a', fontStyle: 'italic', display: 'block', marginTop: '0.15rem', fontSize: '0.7rem' }}>
+                          * All active days qualified (100% of sales matched)
+                        </span>
+                      )
+                    )}
                   </td>
                   <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>
                     {formatCurrency(printPayslipData.total_kot_amount)}

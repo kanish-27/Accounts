@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom';
 import { Users, Plus, Edit2, Trash2, Phone, Calendar, ArrowLeft, UserPlus, DollarSign } from 'lucide-react';
 
 export default function Suppliers({ showToast, API_BASE, settings }) {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const firstOfMonthStr = todayStr.substring(0, 8) + '01';
+
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -11,6 +14,11 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
   const [printKotsData, setPrintKotsData] = useState(null);
   const [kotTab, setKotTab] = useState('unpaid'); // 'unpaid' or 'paid'
   const [advanceTab, setAdvanceTab] = useState('pending'); // 'pending' or 'history'
+
+  // Paid KOT History Date Range states
+  const [paidKotStartDate, setPaidKotStartDate] = useState(firstOfMonthStr);
+  const [paidKotEndDate, setPaidKotEndDate] = useState(todayStr);
+  const [showAllPaidKots, setShowAllPaidKots] = useState(false);
 
   // Cash Advance States
   const [showAdvanceModal, setShowAdvanceModal] = useState(false);
@@ -143,6 +151,9 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
     setSelectedSupplier(supplier);
     setKotTab('unpaid');
     setAdvanceTab('pending');
+    setPaidKotStartDate(firstOfMonthStr);
+    setPaidKotEndDate(todayStr);
+    setShowAllPaidKots(false);
     try {
       // Get all KOT bills for this supplier
       const kotRes = await fetch(`${API_BASE}/kot?supplier_id=${supplier.id}`);
@@ -238,7 +249,12 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
   };
 
   const unpaidKots = supplierActivity.kots.filter(kot => !isKotPaid(kot));
-  const paidKots = supplierActivity.kots.filter(kot => isKotPaid(kot));
+  const paidKots = supplierActivity.kots.filter(kot => {
+    if (!isKotPaid(kot)) return false;
+    if (showAllPaidKots) return true;
+    return (!paidKotStartDate || kot.date >= paidKotStartDate) &&
+           (!paidKotEndDate || kot.date <= paidKotEndDate);
+  });
 
   const handlePrintUnpaidKOTs = () => {
     if (!selectedSupplier || unpaidKots.length === 0) return;
@@ -576,40 +592,82 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
                 </div>
               )
             ) : (
-              paidKots.length === 0 ? (
-                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                  No paid KOT transactions history found for this supplier.
+              <>
+                {/* Paid KOT Filter Bar */}
+                <div className="filter-bar" style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+                  <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center', width: '100%' }}>
+                    <div className="form-group" style={{ marginBottom: 0, minWidth: '130px' }}>
+                      <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Start Date</label>
+                      <input 
+                        type="date" 
+                        value={paidKotStartDate} 
+                        onChange={(e) => setPaidKotStartDate(e.target.value)} 
+                        disabled={showAllPaidKots}
+                        className="form-control"
+                        style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}
+                      />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0, minWidth: '130px' }}>
+                      <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>End Date</label>
+                      <input 
+                        type="date" 
+                        value={paidKotEndDate} 
+                        onChange={(e) => setPaidKotEndDate(e.target.value)} 
+                        disabled={showAllPaidKots}
+                        className="form-control"
+                        style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto', alignSelf: 'flex-end', height: '36px' }}>
+                      <input 
+                        type="checkbox" 
+                        id="showAllPaidKotsCheckbox" 
+                        checked={showAllPaidKots} 
+                        onChange={(e) => setShowAllPaidKots(e.target.checked)}
+                        style={{ width: '16px', height: '16px', accentColor: 'var(--accent-gold-glow)', cursor: 'pointer' }}
+                      />
+                      <label htmlFor="showAllPaidKotsCheckbox" style={{ fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer', userSelect: 'none' }}>
+                        All Paid KOTs
+                      </label>
+                    </div>
+                  </div>
                 </div>
-              ) : (
-                <div className="table-wrapper" style={{ maxHeight: '350px', overflowY: 'auto' }}>
-                  <table className="custom-table">
-                    <thead>
-                      <tr>
-                        <th>Bill Number</th>
-                        <th>Date</th>
-                        <th>Time</th>
-                        <th>Amount</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paidKots.map((kot) => (
-                        <tr key={kot.id}>
-                          <td style={{ fontWeight: 600 }}>{kot.bill_number}</td>
-                          <td>{kot.date}</td>
-                          <td>{kot.time}</td>
-                          <td className="text-gold">{formatCurrency(kot.amount)}</td>
-                          <td>
-                            <span className="badge badge-present" style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}>
-                              Paid
-                            </span>
-                          </td>
+
+                {paidKots.length === 0 ? (
+                  <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                    No paid KOT transactions history found for this supplier in the selected period.
+                  </div>
+                ) : (
+                  <div className="table-wrapper" style={{ maxHeight: '350px', overflowY: 'auto' }}>
+                    <table className="custom-table">
+                      <thead>
+                        <tr>
+                          <th>Bill Number</th>
+                          <th>Date</th>
+                          <th>Time</th>
+                          <th>Amount</th>
+                          <th>Status</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )
+                      </thead>
+                      <tbody>
+                        {paidKots.map((kot) => (
+                          <tr key={kot.id}>
+                            <td style={{ fontWeight: 600 }}>{kot.bill_number}</td>
+                            <td>{kot.date}</td>
+                            <td>{kot.time}</td>
+                            <td className="text-gold">{formatCurrency(kot.amount)}</td>
+                            <td>
+                              <span className="badge badge-present" style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}>
+                                Paid
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

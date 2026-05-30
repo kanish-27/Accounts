@@ -465,6 +465,7 @@ export default function Suppliers({ showToast, API_BASE }) {
                   <th style={{ padding: '0.5rem', textAlign: 'left' }}>Date</th>
                   <th style={{ padding: '0.5rem', textAlign: 'left' }}>Time</th>
                   <th style={{ padding: '0.5rem', textAlign: 'right' }}>KOT Bill Amount</th>
+                  <th style={{ padding: '0.5rem', textAlign: 'right' }}>Commission (5%)</th>
                 </tr>
               </thead>
               <tbody>
@@ -476,6 +477,9 @@ export default function Suppliers({ showToast, API_BASE }) {
                     <td style={{ padding: '0.65rem 0.5rem', textAlign: 'right' }}>
                       {formatCurrency(kot.amount)}
                     </td>
+                    <td style={{ padding: '0.65rem 0.5rem', textAlign: 'right' }}>
+                      {formatCurrency(kot.amount * 0.05)}
+                    </td>
                   </tr>
                 ))}
                 <tr style={{ borderTop: '2px solid #333', fontSize: '1.1rem', fontWeight: 700 }}>
@@ -483,9 +487,12 @@ export default function Suppliers({ showToast, API_BASE }) {
                   <td style={{ padding: '1rem 0.5rem', textAlign: 'right' }}>
                     {formatCurrency(printKotsData.kots.reduce((sum, k) => sum + k.amount, 0))}
                   </td>
+                  <td style={{ padding: '1rem 0.5rem', textAlign: 'right' }}>
+                    {formatCurrency(printKotsData.kots.reduce((sum, k) => sum + k.amount, 0) * 0.05)}
+                  </td>
                 </tr>
                 <tr style={{ fontSize: '1rem', fontWeight: 700 }}>
-                  <td style={{ padding: '0.5rem', color: '#10b981' }} colSpan="3">Est. Supplier Commission (5.0%)</td>
+                  <td style={{ padding: '0.5rem', color: '#10b981' }} colSpan="4">Est. Supplier Commission (5.0%)</td>
                   <td style={{ padding: '0.5rem', textAlign: 'right', color: '#10b981' }}>
                     {formatCurrency(printKotsData.kots.reduce((sum, k) => sum + k.amount, 0) * 0.05)}
                   </td>

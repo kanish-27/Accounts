@@ -10,6 +10,7 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
   const [supplierActivity, setSupplierActivity] = useState({ attendance: [], kots: [], advances: [], payouts: [] });
   const [printKotsData, setPrintKotsData] = useState(null);
   const [kotTab, setKotTab] = useState('unpaid'); // 'unpaid' or 'paid'
+  const [advanceTab, setAdvanceTab] = useState('pending'); // 'pending' or 'history'
 
   // Cash Advance States
   const [showAdvanceModal, setShowAdvanceModal] = useState(false);
@@ -141,6 +142,7 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
   const viewProfile = async (supplier) => {
     setSelectedSupplier(supplier);
     setKotTab('unpaid');
+    setAdvanceTab('pending');
     try {
       // Get all KOT bills for this supplier
       const kotRes = await fetch(`${API_BASE}/kot?supplier_id=${supplier.id}`);
@@ -307,6 +309,8 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
 
   // PROFILE / DETAILED PROFILE VIEW
   if (selectedSupplier) {
+    const pendingAdvances = (supplierActivity.advances || []).filter(a => a.status === 'pending');
+    const deductedAdvances = (supplierActivity.advances || []).filter(a => a.status === 'deducted');
     return (
       <div>
         <div className="content-header">
@@ -365,10 +369,43 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
               </div>
             </div>
 
-            {/* Supplier cash advances card */}
+             {/* Supplier cash advances card */}
             <div className="card crimson-header" style={{ padding: '2rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-                <div className="section-title" style={{ margin: 0, paddingLeft: '0.75rem' }}>Cash Advances</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', gap: '1.25rem' }}>
+                  <button 
+                    onClick={() => setAdvanceTab('pending')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: advanceTab === 'pending' ? 'var(--accent-gold-glow)' : 'var(--text-secondary)',
+                      fontWeight: 600,
+                      fontSize: '0.95rem',
+                      cursor: 'pointer',
+                      paddingBottom: '0.5rem',
+                      borderBottom: advanceTab === 'pending' ? '2px solid var(--accent-gold-glow)' : 'none',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    Active
+                  </button>
+                  <button 
+                    onClick={() => setAdvanceTab('history')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: advanceTab === 'history' ? 'var(--accent-gold-glow)' : 'var(--text-secondary)',
+                      fontWeight: 600,
+                      fontSize: '0.95rem',
+                      cursor: 'pointer',
+                      paddingBottom: '0.5rem',
+                      borderBottom: advanceTab === 'history' ? '2px solid var(--accent-gold-glow)' : 'none',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    History
+                  </button>
+                </div>
                 <button 
                   onClick={() => {
                     setAdvanceDate(new Date().toISOString().split('T')[0]);
@@ -380,34 +417,34 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
                 </button>
               </div>
 
-              {!supplierActivity.advances || supplierActivity.advances.length === 0 ? (
-                <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                  No advances logged for this supplier.
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '300px', overflowY: 'auto' }}>
-                  {supplierActivity.advances.map((adv) => (
-                    <div key={adv.id} style={{
-                      background: 'rgba(255, 255, 255, 0.01)',
-                      border: '1px solid var(--border-color)',
-                      padding: '0.75rem 1rem',
-                      borderRadius: 'var(--radius-md)',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}>
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{formatCurrency(adv.amount)}</span>
-                          <span className={`badge ${adv.status === 'deducted' ? 'badge-present' : 'badge-active'}`} style={{ fontSize: '0.6rem', padding: '0.15rem 0.35rem' }}>
-                            {adv.status}
-                          </span>
+              {advanceTab === 'pending' ? (
+                pendingAdvances.length === 0 ? (
+                  <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                    No active pending advances logged.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '300px', overflowY: 'auto' }}>
+                    {pendingAdvances.map((adv) => (
+                      <div key={adv.id} style={{
+                        background: 'rgba(255, 255, 255, 0.01)',
+                        border: '1px solid var(--border-color)',
+                        padding: '0.75rem 1rem',
+                        borderRadius: 'var(--radius-md)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{formatCurrency(adv.amount)}</span>
+                            <span className="badge badge-active" style={{ fontSize: '0.6rem', padding: '0.15rem 0.35rem' }}>
+                              pending
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
+                            Date: {adv.date} {adv.remarks && `• Remarks: ${adv.remarks}`}
+                          </div>
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
-                          Date: {adv.date} {adv.remarks && `• Remarks: ${adv.remarks}`}
-                        </div>
-                      </div>
-                      {adv.status === 'pending' && (
                         <button 
                           onClick={() => handleDeleteAdvance(adv.id)} 
                           className="btn btn-danger btn-icon" 
@@ -416,10 +453,42 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
                         >
                           <Trash2 size={12} />
                         </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : (
+                deductedAdvances.length === 0 ? (
+                  <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                    No historical deducted advances found.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '300px', overflowY: 'auto' }}>
+                    {deductedAdvances.map((adv) => (
+                      <div key={adv.id} style={{
+                        background: 'rgba(255, 255, 255, 0.01)',
+                        border: '1px solid var(--border-color)',
+                        padding: '0.75rem 1rem',
+                        borderRadius: 'var(--radius-md)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{formatCurrency(adv.amount)}</span>
+                            <span className="badge badge-present" style={{ fontSize: '0.6rem', padding: '0.15rem 0.35rem' }}>
+                              deducted
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
+                            Date: {adv.date} {adv.remarks && `• Remarks: ${adv.remarks}`}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
               )}
             </div>
           </div>

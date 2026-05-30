@@ -293,17 +293,17 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
               No supplier data available for this range. Select another date range.
             </div>
           ) : (
-            <div className="table-wrapper">
+            <div className="table-wrapper" style={{ overflowX: 'visible' }}>
               <table className="custom-table">
                 <thead>
                   <tr>
                     <th>Supplier</th>
-                    <th>Attendance Break</th>
-                    <th>Wage Pay (A)</th>
-                    <th>Comm. (B) *</th>
-                    <th>Salary (A+B)</th>
-                    <th style={{ color: 'var(--accent-crimson)' }}>Advances (C)</th>
-                    <th style={{ color: 'var(--accent-gold-glow)' }}>Net Take-Home (A+B-C)</th>
+                    <th>Attendance</th>
+                    <th>Base Pay</th>
+                    <th>Commission</th>
+                    <th>Gross Salary</th>
+                    <th style={{ color: 'var(--accent-crimson)' }}>Advances</th>
+                    <th style={{ color: 'var(--accent-gold-glow)' }}>Net Pay</th>
                     <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
@@ -352,9 +352,6 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
                   ))}
                 </tbody>
               </table>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.85rem', paddingLeft: '0.5rem', borderLeft: '2px solid var(--accent-gold-glow)' }}>
-                * Note: KOT commission (5.0%) is calculated daily. A supplier only qualifies for commission on days where their daily KOT commission reaches ₹{settings?.kot_commission_limit || 250} or more (requires daily KOT of ₹{((settings?.kot_commission_limit || 250) * 20).toLocaleString('en-IN')} or above). Daily commissions below ₹{settings?.kot_commission_limit || 250} are discarded.
-              </div>
             </div>
           )}
         </div>
@@ -366,7 +363,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
               No payout records logged yet. Use the Salary Calculator tab to disburse payouts.
             </div>
           ) : (
-            <div className="table-wrapper">
+            <div className="table-wrapper" style={{ overflowX: 'visible' }}>
               <table className="custom-table">
                 <thead>
                   <tr>

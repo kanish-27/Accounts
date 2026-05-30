@@ -300,7 +300,6 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
                     <th>Supplier</th>
                     <th>Attendance Break</th>
                     <th>Wage Pay (A)</th>
-                    <th>Total KOT Bill</th>
                     <th>Comm. (B) *</th>
                     <th>Salary (A+B)</th>
                     <th style={{ color: 'var(--accent-crimson)' }}>Advances (C)</th>
@@ -324,7 +323,6 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
                         </div>
                       </td>
                       <td>{formatCurrency(row.attendance_pay)}</td>
-                      <td>{formatCurrency(row.total_kot_amount)}</td>
                       <td className="text-green">
                         {formatCurrency(row.commission_amount)}
                         <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '0.25rem' }}>(5% qual.)</span>

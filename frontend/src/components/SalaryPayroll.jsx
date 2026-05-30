@@ -70,14 +70,20 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
     }
   }, [activeTab]);
 
-  const handleProcessPayout = async () => {
-    const unpaidRecords = report.filter(r => !r.already_paid);
-    if (unpaidRecords.length === 0) {
-      showToast('All suppliers for this period are already paid', 'error');
+  const handleProcessPayout = async (record = null) => {
+    const isSingle = record && record.supplier_id !== undefined;
+    const targetRecords = isSingle ? [record] : report.filter(r => !r.already_paid);
+    
+    if (targetRecords.length === 0) {
+      showToast(isSingle ? 'This supplier is already paid for this period' : 'All suppliers for this period are already paid', 'error');
       return;
     }
 
-    if (!window.confirm(`Disburse salaries for ${unpaidRecords.length} unpaid suppliers for period ${startDate} to ${endDate}? This will log payouts in database history.`)) {
+    const confirmMsg = isSingle 
+      ? `Disburse salary for ${record.supplier_name} for period ${startDate} to ${endDate}? This will log their payout in database history.`
+      : `Disburse salaries for ${targetRecords.length} unpaid suppliers for period ${startDate} to ${endDate}? This will log payouts in database history.`;
+
+    if (!window.confirm(confirmMsg)) {
       return;
     }
 
@@ -87,7 +93,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
         start_date: startDate,
         end_date: endDate,
         payment_date: new Date().toISOString().split('T')[0],
-        records: unpaidRecords.map(r => ({
+        records: targetRecords.map(r => ({
           supplier_id: r.supplier_id,
           attendance_days: r.attendance_days,
           total_kot_amount: r.total_kot_amount,
@@ -109,7 +115,13 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
       });
 
       if (!res.ok) throw new Error('Failed to process payout');
-      showToast('Payout records processed successfully!', 'success');
+      showToast(isSingle 
+        ? `Payout for ${record.supplier_name} processed successfully!` 
+        : 'Payout records processed successfully!', 'success');
+      
+      if (isSingle) {
+        await calculatePayroll();
+      }
       
       // Navigate to history to see recorded payouts
       setActiveTab('history');
@@ -340,13 +352,26 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
                         </div>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <button 
-                          onClick={() => openPrintDialog(row)} 
-                          className="btn btn-secondary btn-icon" 
-                          title="Print salary receipt"
-                        >
-                          <Printer size={14} />
-                        </button>
+                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+                          {!row.already_paid && (
+                            <button 
+                              onClick={() => handleProcessPayout(row)} 
+                              className="btn btn-success btn-sm"
+                              style={{ padding: '0.45rem 0.75rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                              title="Process payout for this supplier"
+                              disabled={loading}
+                            >
+                              Pay
+                            </button>
+                          )}
+                          <button 
+                            onClick={() => openPrintDialog(row)} 
+                            className="btn btn-secondary btn-icon btn-sm" 
+                            title="Print salary receipt"
+                          >
+                            <Printer size={14} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

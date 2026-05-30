@@ -7,7 +7,7 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSupplier, setSelectedSupplier] = useState(null); // For detail/profile view
-  const [supplierActivity, setSupplierActivity] = useState({ attendance: [], kots: [], advances: [] });
+  const [supplierActivity, setSupplierActivity] = useState({ attendance: [], kots: [], advances: [], payouts: [] });
   const [printKotsData, setPrintKotsData] = useState(null);
 
   // Cash Advance States
@@ -148,7 +148,19 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
       const advRes = await fetch(`${API_BASE}/advances?supplier_id=${supplier.id}`);
       const advances = await advRes.json();
 
-      setSupplierActivity({ kots, advances });
+      // Get all payouts for this supplier
+      let payouts = [];
+      try {
+        const payoutRes = await fetch(`${API_BASE}/payroll/history`);
+        if (payoutRes.ok) {
+          const allPayouts = await payoutRes.json();
+          payouts = allPayouts.filter(p => p.supplier_id?.toString() === supplier.id.toString());
+        }
+      } catch (e) {
+        console.error('Error loading payout history:', e);
+      }
+
+      setSupplierActivity({ kots, advances, payouts });
     } catch (err) {
       console.error(err);
       showToast('Error loading profile activity', 'error');
@@ -223,6 +235,7 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
       phone: selectedSupplier.phone,
       joining_date: selectedSupplier.joining_date,
       kots: supplierActivity.kots,
+      payouts: supplierActivity.payouts || [],
       printed_at: new Date().toLocaleString('en-IN')
     });
   };
@@ -412,17 +425,28 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
                       <th>Date</th>
                       <th>Time</th>
                       <th>Amount</th>
+                      <th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {supplierActivity.kots.map((kot) => (
-                      <tr key={kot.id}>
-                        <td style={{ fontWeight: 600 }}>{kot.bill_number}</td>
-                        <td>{kot.date}</td>
-                        <td>{kot.time}</td>
-                        <td className="text-gold">{formatCurrency(kot.amount)}</td>
-                      </tr>
-                    ))}
+                    {supplierActivity.kots.map((kot) => {
+                      const isPaid = (supplierActivity.payouts || []).some(
+                        p => kot.date >= p.start_date && kot.date <= p.end_date
+                      );
+                      return (
+                        <tr key={kot.id}>
+                          <td style={{ fontWeight: 600 }}>{kot.bill_number}</td>
+                          <td>{kot.date}</td>
+                          <td>{kot.time}</td>
+                          <td className="text-gold">{formatCurrency(kot.amount)}</td>
+                          <td>
+                            <span className={`badge ${isPaid ? 'badge-present' : 'badge-inactive'}`} style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}>
+                              {isPaid ? 'Paid' : 'Unpaid'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -432,7 +456,7 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
 
         {/* HIDDEN PRINT-FRIENDLY KOT STATEMENT */}
         {printKotsData && createPortal(
-          <div className="printable-kot-statement">
+          <div className="printable-kot-statement" style={{ position: 'relative' }}>
             <div style={{ textAlign: 'center', borderBottom: '2px solid #000', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
               <h2 style={{ fontFamily: 'Montserrat', fontSize: '1.5rem', fontWeight: 700, margin: 0, textTransform: 'uppercase' }}>
                 Udumalai Cosmo Recreation Club
@@ -471,6 +495,13 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
                 return (total * 0.05) >= commissionLimit;
               };
               
+              const isKotPaid = (kot) => {
+                const payoutsList = printKotsData.payouts || [];
+                return payoutsList.some(p => kot.date >= p.start_date && kot.date <= p.end_date);
+              };
+              
+              const allPaid = printKotsData.already_paid || (printKotsData.kots.length > 0 && printKotsData.kots.every(isKotPaid));
+              
               const totalGrossVolume = printKotsData.kots.reduce((sum, k) => sum + k.amount, 0);
               const totalQualifiedVolume = printKotsData.kots.reduce((sum, k) => {
                 return sum + (isDateQualified(k.date) ? k.amount : 0);
@@ -479,86 +510,98 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
               const totalCommission = totalQualifiedVolume * 0.05;
               
               return (
-                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid #333', background: '#f5f5f5' }}>
-                      <th style={{ padding: '0.5rem', textAlign: 'left' }}>Bill Number</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'left' }}>Date</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'left' }}>Time</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'right' }}>KOT Bill Amount</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'right' }}>Commission (5%)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {printKotsData.kots.map((kot) => {
-                      const isQualified = isDateQualified(kot.date);
-                      const commission = isQualified ? kot.amount * 0.05 : 0;
-                      return (
-                        <tr key={kot.id} style={{ borderBottom: '1px solid #eee', background: isQualified ? 'transparent' : '#fff5f5' }}>
-                          <td style={{ padding: '0.65rem 0.5rem', fontWeight: 600 }}>{kot.bill_number}</td>
-                          <td style={{ padding: '0.65rem 0.5rem' }}>{kot.date}</td>
-                          <td style={{ padding: '0.65rem 0.5rem' }}>{kot.time}</td>
-                          <td style={{ padding: '0.65rem 0.5rem', textAlign: 'right' }}>
-                            {formatCurrency(kot.amount)}
-                            {!isQualified && (
-                              <div style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 500 }}>
-                                Unqualified Day
-                              </div>
-                            )}
-                          </td>
-                          <td style={{ padding: '0.65rem 0.5rem', textAlign: 'right' }}>
-                            {formatCurrency(commission)}
-                            {!isQualified && (
-                              <div style={{ fontSize: '0.7rem', color: '#999', fontStyle: 'italic' }}>
-                                (Daily comm. &lt; ₹{commissionLimit})
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    
-                    {/* Totals Summary */}
-                    <tr style={{ borderTop: '2px solid #333', fontSize: '0.95rem', fontWeight: 600 }}>
-                      <td style={{ padding: '0.65rem 0.5rem' }} colSpan="3">Gross KOT Volume (All Bills)</td>
-                      <td style={{ padding: '0.65rem 0.5rem', textAlign: 'right' }}>
-                        {formatCurrency(totalGrossVolume)}
-                      </td>
-                      <td style={{ padding: '0.65rem 0.5rem', textAlign: 'right' }}>
-                        {formatCurrency(totalGrossVolume * 0.05)}
-                      </td>
-                    </tr>
-                    
-                    {totalUnqualifiedVolume > 0 && (
-                      <tr style={{ fontSize: '0.95rem', fontWeight: 600, color: '#ef4444' }}>
-                        <td style={{ padding: '0.5rem' }} colSpan="3">Less: Unqualified Days Volume</td>
-                        <td style={{ padding: '0.5rem', textAlign: 'right' }}>
-                          -{formatCurrency(totalUnqualifiedVolume)}
+                <>
+                  {allPaid && (
+                    <div className="print-stamp">
+                      PAID
+                    </div>
+                  )}
+                  <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid #333', background: '#f5f5f5' }}>
+                        <th style={{ padding: '0.5rem', textAlign: 'left' }}>Bill Number</th>
+                        <th style={{ padding: '0.5rem', textAlign: 'left' }}>Date</th>
+                        <th style={{ padding: '0.5rem', textAlign: 'left' }}>Time</th>
+                        <th style={{ padding: '0.5rem', textAlign: 'left' }}>Status</th>
+                        <th style={{ padding: '0.5rem', textAlign: 'right' }}>KOT Bill Amount</th>
+                        <th style={{ padding: '0.5rem', textAlign: 'right' }}>Commission (5%)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {printKotsData.kots.map((kot) => {
+                        const isQualified = isDateQualified(kot.date);
+                        const isPaid = isKotPaid(kot);
+                        const commission = isQualified ? kot.amount * 0.05 : 0;
+                        return (
+                          <tr key={kot.id} style={{ borderBottom: '1px solid #eee', background: isQualified ? 'transparent' : '#fff5f5' }}>
+                            <td style={{ padding: '0.65rem 0.5rem', fontWeight: 600 }}>{kot.bill_number}</td>
+                            <td style={{ padding: '0.65rem 0.5rem' }}>{kot.date}</td>
+                            <td style={{ padding: '0.65rem 0.5rem' }}>{kot.time}</td>
+                            <td style={{ padding: '0.65rem 0.5rem', color: isPaid ? '#16a34a' : '#ef4444', fontWeight: 600 }}>
+                              {isPaid ? 'Paid' : 'Unpaid'}
+                            </td>
+                            <td style={{ padding: '0.65rem 0.5rem', textAlign: 'right' }}>
+                              {formatCurrency(kot.amount)}
+                              {!isQualified && (
+                                <div style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 500 }}>
+                                  Unqualified Day
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ padding: '0.65rem 0.5rem', textAlign: 'right' }}>
+                              {formatCurrency(commission)}
+                              {!isQualified && (
+                                <div style={{ fontSize: '0.7rem', color: '#999', fontStyle: 'italic' }}>
+                                  (Daily comm. &lt; ₹{commissionLimit})
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      
+                      {/* Totals Summary */}
+                      <tr style={{ borderTop: '2px solid #333', fontSize: '0.95rem', fontWeight: 600 }}>
+                        <td style={{ padding: '0.65rem 0.5rem' }} colSpan="4">Gross KOT Volume (All Bills)</td>
+                        <td style={{ padding: '0.65rem 0.5rem', textAlign: 'right' }}>
+                          {formatCurrency(totalGrossVolume)}
                         </td>
-                        <td style={{ padding: '0.5rem', textAlign: 'right' }}>
-                          -{formatCurrency(totalUnqualifiedVolume * 0.05)}
+                        <td style={{ padding: '0.65rem 0.5rem', textAlign: 'right' }}>
+                          {formatCurrency(totalGrossVolume * 0.05)}
                         </td>
                       </tr>
-                    )}
-                    
-                    <tr style={{ borderTop: '1px solid #111', borderBottom: '2px solid #333', fontSize: '1.1rem', fontWeight: 700 }}>
-                      <td style={{ padding: '0.75rem 0.5rem' }} colSpan="3">Total KOT Billing Volume</td>
-                      <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right' }}>
-                        {formatCurrency(totalQualifiedVolume)}
-                      </td>
-                      <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right', color: '#10b981' }}>
-                        {formatCurrency(totalCommission)}
-                      </td>
-                    </tr>
-                    
-                    <tr style={{ fontSize: '1rem', fontWeight: 700 }}>
-                      <td style={{ padding: '0.75rem 0.5rem', color: '#10b981' }} colSpan="4">Est. Supplier Commission (5.0%)</td>
-                      <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right', color: '#10b981' }}>
-                        {formatCurrency(totalCommission)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                      
+                      {totalUnqualifiedVolume > 0 && (
+                        <tr style={{ fontSize: '0.95rem', fontWeight: 600, color: '#ef4444' }}>
+                          <td style={{ padding: '0.5rem' }} colSpan="4">Less: Unqualified Days Volume</td>
+                          <td style={{ padding: '0.5rem', textAlign: 'right' }}>
+                            -{formatCurrency(totalUnqualifiedVolume)}
+                          </td>
+                          <td style={{ padding: '0.5rem', textAlign: 'right' }}>
+                            -{formatCurrency(totalUnqualifiedVolume * 0.05)}
+                          </td>
+                        </tr>
+                      )}
+                      
+                      <tr style={{ borderTop: '1px solid #111', borderBottom: '2px solid #333', fontSize: '1.1rem', fontWeight: 700 }}>
+                        <td style={{ padding: '0.75rem 0.5rem' }} colSpan="4">Total KOT Billing Volume</td>
+                        <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right' }}>
+                          {formatCurrency(totalQualifiedVolume)}
+                        </td>
+                        <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right', color: '#10b981' }}>
+                          {formatCurrency(totalCommission)}
+                        </td>
+                      </tr>
+                      
+                      <tr style={{ fontSize: '1rem', fontWeight: 700 }}>
+                        <td style={{ padding: '0.75rem 0.5rem', color: '#10b981' }} colSpan="5">Est. Supplier Commission (5.0%)</td>
+                        <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right', color: '#10b981' }}>
+                          {formatCurrency(totalCommission)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </>
               );
             })()}
 

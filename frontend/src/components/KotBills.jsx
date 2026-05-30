@@ -528,7 +528,7 @@ export default function KotBills({ showToast, API_BASE }) {
                                   {parsedResults.groupedBills.map((b, idx) => (
                                     <tr key={idx}>
                                       <td style={{ fontWeight: 600 }}>{b.supplier_name}</td>
-                                      <td>{b.date}</td>
+                                      <td>{b.date ? b.date.split('-').reverse().map((x, i) => i === 2 ? x.slice(2) : x).join('/') : ''}</td>
                                       <td>{b.count} rows</td>
                                       <td className="text-gold" style={{ textAlign: 'right', fontWeight: 600 }}>
                                         {formatCurrency(b.amount)}

@@ -1636,25 +1636,24 @@ body.light-theme .menu-toggle-btn:hover {
 .csv-preview-table-wrapper {
   max-height: 200px;
   overflow-y: auto;
-  overflow-x: auto;
+  overflow-x: hidden;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   margin-bottom: 1rem;
-  background: rgba(15, 23, 42, 0.4);
+  background: var(--bg-input);
 }
 
 .csv-preview-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.72rem;
-  min-width: 330px;
+  font-size: 0.75rem;
 }
 
 .csv-preview-table th {
   position: sticky;
   top: 0;
-  background: #0f172a;
-  padding: 0.5rem 0.6rem;
+  background: var(--bg-sidebar);
+  padding: 0.6rem 0.5rem;
   text-align: left;
   border-bottom: 1px solid var(--border-color);
   color: var(--text-secondary);
@@ -1663,8 +1662,8 @@ body.light-theme .menu-toggle-btn:hover {
 }
 
 .csv-preview-table td {
-  padding: 0.5rem 0.6rem;
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.03);
+  padding: 0.6rem 0.5rem;
+  border-bottom: 1px solid var(--border-color);
   color: var(--text-primary);
   white-space: nowrap;
 }

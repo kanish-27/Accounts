@@ -9,6 +9,7 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
   const [selectedSupplier, setSelectedSupplier] = useState(null); // For detail/profile view
   const [supplierActivity, setSupplierActivity] = useState({ attendance: [], kots: [], advances: [], payouts: [] });
   const [printKotsData, setPrintKotsData] = useState(null);
+  const [kotTab, setKotTab] = useState('unpaid'); // 'unpaid' or 'paid'
 
   // Cash Advance States
   const [showAdvanceModal, setShowAdvanceModal] = useState(false);
@@ -139,6 +140,7 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
   // Fetch supplier detailed activity (KOTs & Attendance logs)
   const viewProfile = async (supplier) => {
     setSelectedSupplier(supplier);
+    setKotTab('unpaid');
     try {
       // Get all KOT bills for this supplier
       const kotRes = await fetch(`${API_BASE}/kot?supplier_id=${supplier.id}`);
@@ -227,16 +229,40 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
     }
   };
 
-  const handlePrintKOTs = () => {
-    if (!selectedSupplier || supplierActivity.kots.length === 0) return;
+  const isKotPaid = (kot) => {
+    return (supplierActivity.payouts || []).some(
+      p => kot.date >= p.start_date && kot.date <= p.end_date
+    );
+  };
+
+  const unpaidKots = supplierActivity.kots.filter(kot => !isKotPaid(kot));
+  const paidKots = supplierActivity.kots.filter(kot => isKotPaid(kot));
+
+  const handlePrintUnpaidKOTs = () => {
+    if (!selectedSupplier || unpaidKots.length === 0) return;
     setPrintKotsData({
       supplier_name: selectedSupplier.name,
       supplier_id: selectedSupplier.id,
       phone: selectedSupplier.phone,
       joining_date: selectedSupplier.joining_date,
-      kots: supplierActivity.kots,
+      kots: unpaidKots,
       payouts: supplierActivity.payouts || [],
-      printed_at: new Date().toLocaleString('en-IN')
+      printed_at: new Date().toLocaleString('en-IN'),
+      already_paid: false
+    });
+  };
+
+  const handlePrintPaidKOTs = () => {
+    if (!selectedSupplier || paidKots.length === 0) return;
+    setPrintKotsData({
+      supplier_name: selectedSupplier.name,
+      supplier_id: selectedSupplier.id,
+      phone: selectedSupplier.phone,
+      joining_date: selectedSupplier.joining_date,
+      kots: paidKots,
+      payouts: supplierActivity.payouts || [],
+      printed_at: new Date().toLocaleString('en-IN'),
+      already_paid: true
     });
   };
 
@@ -400,56 +426,121 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
 
           {/* Activity Logs (KOT bills) */}
           <div className="glass-panel" style={{ margin: 0, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <div className="section-title" style={{ margin: 0 }}>Supplier KOT Bills Statement</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', gap: '1.25rem' }}>
+                <button 
+                  onClick={() => setKotTab('unpaid')} 
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: kotTab === 'unpaid' ? 'var(--accent-gold-glow)' : 'var(--text-secondary)',
+                    fontWeight: 600,
+                    fontSize: '0.95rem',
+                    cursor: 'pointer',
+                    paddingBottom: '0.5rem',
+                    borderBottom: kotTab === 'unpaid' ? '2px solid var(--accent-gold-glow)' : 'none',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  Active KOTs (Unpaid)
+                </button>
+                <button 
+                  onClick={() => setKotTab('paid')} 
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: kotTab === 'paid' ? 'var(--accent-gold-glow)' : 'var(--text-secondary)',
+                    fontWeight: 600,
+                    fontSize: '0.95rem',
+                    cursor: 'pointer',
+                    paddingBottom: '0.5rem',
+                    borderBottom: kotTab === 'paid' ? '2px solid var(--accent-gold-glow)' : 'none',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  Paid KOTs History
+                </button>
+              </div>
               <button 
-                onClick={handlePrintKOTs} 
+                onClick={kotTab === 'unpaid' ? handlePrintUnpaidKOTs : handlePrintPaidKOTs} 
                 className="btn btn-secondary btn-sm"
                 style={{ border: '1px solid var(--border-color)' }}
-                disabled={supplierActivity.kots.length === 0}
+                disabled={kotTab === 'unpaid' ? unpaidKots.length === 0 : paidKots.length === 0}
               >
-                Print KOT Statement
+                {kotTab === 'unpaid' ? 'Print KOT Statement' : 'Print Paid KOTs'}
               </button>
             </div>
 
-            {supplierActivity.kots.length === 0 ? (
-              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                No recent KOT transactions found for this supplier.
-              </div>
-            ) : (
-              <div className="table-wrapper" style={{ maxHeight: '350px', overflowY: 'auto' }}>
-                <table className="custom-table">
-                  <thead>
-                    <tr>
-                      <th>Bill Number</th>
-                      <th>Date</th>
-                      <th>Time</th>
-                      <th>Amount</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {supplierActivity.kots.map((kot) => {
-                      const isPaid = (supplierActivity.payouts || []).some(
-                        p => kot.date >= p.start_date && kot.date <= p.end_date
-                      );
-                      return (
+            {kotTab === 'unpaid' ? (
+              unpaidKots.length === 0 ? (
+                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                  No unpaid KOT transactions found for this supplier. All bills are settled!
+                </div>
+              ) : (
+                <div className="table-wrapper" style={{ maxHeight: '350px', overflowY: 'auto' }}>
+                  <table className="custom-table">
+                    <thead>
+                      <tr>
+                        <th>Bill Number</th>
+                        <th>Date</th>
+                        <th>Time</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {unpaidKots.map((kot) => (
                         <tr key={kot.id}>
                           <td style={{ fontWeight: 600 }}>{kot.bill_number}</td>
                           <td>{kot.date}</td>
                           <td>{kot.time}</td>
                           <td className="text-gold">{formatCurrency(kot.amount)}</td>
                           <td>
-                            <span className={`badge ${isPaid ? 'badge-present' : 'badge-inactive'}`} style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}>
-                              {isPaid ? 'Paid' : 'Unpaid'}
+                            <span className="badge badge-inactive" style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}>
+                              Unpaid
                             </span>
                           </td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            ) : (
+              paidKots.length === 0 ? (
+                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                  No paid KOT transactions history found for this supplier.
+                </div>
+              ) : (
+                <div className="table-wrapper" style={{ maxHeight: '350px', overflowY: 'auto' }}>
+                  <table className="custom-table">
+                    <thead>
+                      <tr>
+                        <th>Bill Number</th>
+                        <th>Date</th>
+                        <th>Time</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paidKots.map((kot) => (
+                        <tr key={kot.id}>
+                          <td style={{ fontWeight: 600 }}>{kot.bill_number}</td>
+                          <td>{kot.date}</td>
+                          <td>{kot.time}</td>
+                          <td className="text-gold">{formatCurrency(kot.amount)}</td>
+                          <td>
+                            <span className="badge badge-present" style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}>
+                              Paid
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
             )}
           </div>
         </div>

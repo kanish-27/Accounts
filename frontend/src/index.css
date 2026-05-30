@@ -1422,7 +1422,7 @@ body.light-theme .menu-toggle-btn:hover {
 
 .kot-layout-grid {
   display: grid;
-  grid-template-columns: 350px 1fr;
+  grid-template-columns: 380px 1fr;
   gap: 2rem;
   align-items: start;
 }
@@ -1636,31 +1636,37 @@ body.light-theme .menu-toggle-btn:hover {
 .csv-preview-table-wrapper {
   max-height: 200px;
   overflow-y: auto;
+  overflow-x: auto;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   margin-bottom: 1rem;
+  background: rgba(15, 23, 42, 0.4);
 }
 
 .csv-preview-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
+  min-width: 330px;
 }
 
 .csv-preview-table th {
   position: sticky;
   top: 0;
-  background: var(--bg-dark);
-  padding: 0.5rem;
+  background: #0f172a;
+  padding: 0.5rem 0.6rem;
   text-align: left;
   border-bottom: 1px solid var(--border-color);
   color: var(--text-secondary);
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .csv-preview-table td {
-  padding: 0.5rem;
+  padding: 0.5rem 0.6rem;
   border-bottom: 1px dashed rgba(255, 255, 255, 0.03);
   color: var(--text-primary);
+  white-space: nowrap;
 }
 
 .csv-preview-table tr:last-child td {

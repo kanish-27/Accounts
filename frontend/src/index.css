@@ -1111,10 +1111,17 @@ body.light-theme .login-container {
 }
 
 /* Print Stylesheet for Ledger Statements & Payslips */
+@page {
+  size: A4 portrait;
+  margin: 1.5cm 1.2cm;
+}
+
 @media print {
   body {
     background: white !important;
     color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
   
   #root {
@@ -1134,10 +1141,11 @@ body.light-theme .login-container {
   .printable-kot-statement,
   .printable-attendance-statement {
     display: block !important;
-    border: 1px solid #ddd !important;
-    padding: 2rem !important;
-    margin: 0 auto !important;
-    max-width: 600px !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
     page-break-inside: avoid !important;
     color: black !important;
     background: white !important;

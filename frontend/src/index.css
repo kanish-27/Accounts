@@ -1113,7 +1113,7 @@ body.light-theme .login-container {
 /* Print Stylesheet for Ledger Statements & Payslips */
 @page {
   size: A4 portrait;
-  margin: 1.5cm 1.2cm;
+  margin: 0;
 }
 
 @media print {
@@ -1121,7 +1121,7 @@ body.light-theme .login-container {
     background: white !important;
     color: black !important;
     margin: 0 !important;
-    padding: 0 !important;
+    padding: 1.6cm 1.2cm !important;
   }
   
   #root {

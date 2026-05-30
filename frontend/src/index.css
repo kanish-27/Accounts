@@ -1422,7 +1422,7 @@ body.light-theme .menu-toggle-btn:hover {
 
 .kot-layout-grid {
   display: grid;
-  grid-template-columns: 380px 1fr;
+  grid-template-columns: 400px 1fr;
   gap: 2rem;
   align-items: start;
 }
@@ -1591,7 +1591,7 @@ body.light-theme .menu-toggle-btn:hover {
 
 .csv-preview-card {
   margin-top: 1.25rem;
-  padding: 1rem;
+  padding: 0.75rem;
   background: rgba(245, 158, 11, 0.02);
   border: 1px solid var(--accent-gold-border);
   border-radius: var(--radius-md);
@@ -1646,14 +1646,14 @@ body.light-theme .menu-toggle-btn:hover {
 .csv-preview-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
 }
 
 .csv-preview-table th {
   position: sticky;
   top: 0;
   background: var(--bg-sidebar);
-  padding: 0.6rem 0.5rem;
+  padding: 0.5rem 0.3rem;
   text-align: left;
   border-bottom: 1px solid var(--border-color);
   color: var(--text-secondary);
@@ -1662,7 +1662,7 @@ body.light-theme .menu-toggle-btn:hover {
 }
 
 .csv-preview-table td {
-  padding: 0.6rem 0.5rem;
+  padding: 0.5rem 0.3rem;
   border-bottom: 1px solid var(--border-color);
   color: var(--text-primary);
   white-space: nowrap;

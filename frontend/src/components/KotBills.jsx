@@ -521,7 +521,7 @@ export default function KotBills({ showToast, API_BASE }) {
                                     <th>Supplier</th>
                                     <th>Date</th>
                                     <th>Items</th>
-                                    <th style={{ textAlign: 'right' }}>Total Sum</th>
+                                    <th style={{ textAlign: 'right' }}>Amount</th>
                                   </tr>
                                 </thead>
                                 <tbody>

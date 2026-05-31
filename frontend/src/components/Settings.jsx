@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, ShieldAlert, Key, Sliders, UserCheck } from 'lucide-react';
+import { Save, ShieldAlert, Key, Sliders, UserCheck, Trash2 } from 'lucide-react';
 
 export default function Settings({ showToast, API_BASE, settings, onSettingsUpdate }) {
   const [kotLimit, setKotLimit] = useState(settings?.kot_commission_limit || 250);
@@ -11,6 +11,50 @@ export default function Settings({ showToast, API_BASE, settings, onSettingsUpda
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passLoading, setPassLoading] = useState(false);
+
+  // Reset database fields
+  const [confirmPasswordForReset, setConfirmPasswordForReset] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+
+  const handleResetDatabase = async () => {
+    if (!confirmPasswordForReset) {
+      showToast('Admin password is required to reset database', 'error');
+      return;
+    }
+
+    const firstConfirm = window.confirm(
+      '⚠ WARNING: You are about to permanently reset the entire database.\n\n' +
+      'This will delete all suppliers, attendance logs, KOT bills, advances, salary payouts, and settings, and restore defaults.\n\n' +
+      'Are you absolutely sure you want to proceed?'
+    );
+    if (!firstConfirm) return;
+
+    const secondConfirm = window.confirm(
+      'FINAL WARNING: THIS OPERATION CANNOT BE UNDONE.\n\n' +
+      'All data will be lost forever. Click OK to initiate the reset.'
+    );
+    if (!secondConfirm) return;
+
+    try {
+      setResetLoading(true);
+      const res = await fetch(`${API_BASE}/system/reset-database`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: confirmPasswordForReset })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to reset database');
+
+      showToast('Database reset successfully! Default data has been re-seeded.', 'success');
+      setConfirmPasswordForReset('');
+      if (onSettingsUpdate) onSettingsUpdate();
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || 'Error resetting database', 'error');
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   // Sync settings when they load
   useEffect(() => {
@@ -136,8 +180,8 @@ export default function Settings({ showToast, API_BASE, settings, onSettingsUpda
               required
             />
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-              The minimum daily commission (5% share) a supplier must earn to qualify.
-              Currently ₹{kotLimit} limit requires daily KOT sales volume of ₹{(kotLimit * 20).toLocaleString('en-IN')}.
+              The minimum daily commission (4% share) a supplier must earn to qualify.
+              Currently ₹{kotLimit} limit requires daily KOT sales volume of ₹{(kotLimit * 25).toLocaleString('en-IN')}.
             </span>
           </div>
 
@@ -199,6 +243,37 @@ export default function Settings({ showToast, API_BASE, settings, onSettingsUpda
             </button>
           </div>
         </form>
+
+        {/* Danger Zone Panel */}
+        <div className="glass-panel" style={{ padding: '1.75rem', gridColumn: '1 / -1', borderLeft: '4px solid var(--accent-crimson)' }}>
+          <h2 className="section-title" style={{ marginBottom: '1rem', color: 'var(--accent-crimson)', borderLeft: 'none', paddingLeft: 0 }}>
+            <Trash2 size={18} color="var(--accent-crimson)" style={{ marginRight: '0.4rem', verticalAlign: 'middle', display: 'inline' }} />
+            Danger Zone - Reset System
+          </h2>
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
+            Permanently delete all suppliers, attendance logs, KOT bills, advances, salary payouts, and custom settings. 
+            This will restore the database to its default, freshly-initialized state. <strong>This action cannot be undone.</strong>
+          </p>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <input 
+              type="password" 
+              placeholder="Enter admin password to confirm..." 
+              value={confirmPasswordForReset} 
+              onChange={(e) => setConfirmPasswordForReset(e.target.value)}
+              className="form-control" 
+              style={{ maxWidth: '300px', margin: 0 }}
+            />
+            <button 
+              onClick={handleResetDatabase} 
+              className="btn btn-danger"
+              disabled={resetLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+            >
+              <Trash2 size={18} />
+              {resetLoading ? 'Resetting Database...' : 'Reset Database'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

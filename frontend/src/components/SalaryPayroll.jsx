@@ -133,12 +133,26 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
     }
   };
 
-  const openPrintDialog = (supplierSalaryData) => {
+  const openPrintDialog = async (supplierSalaryData) => {
+    const sDate = supplierSalaryData.start_date || startDate;
+    const eDate = supplierSalaryData.end_date || endDate;
+    
+    let kots = [];
+    try {
+      const res = await fetch(`${API_BASE}/kot?supplier_id=${supplierSalaryData.supplier_id}&start_date=${sDate}&end_date=${eDate}`);
+      if (res.ok) {
+        kots = await res.json();
+      }
+    } catch (err) {
+      console.error('Error fetching KOTs for payslip print:', err);
+    }
+
     setPrintPayslipData({
       ...supplierSalaryData,
-      start_date: supplierSalaryData.start_date || startDate,
-      end_date: supplierSalaryData.end_date || endDate,
-      payment_date: supplierSalaryData.payment_date || new Date().toLocaleDateString('en-IN')
+      start_date: sDate,
+      end_date: eDate,
+      payment_date: supplierSalaryData.payment_date || new Date().toLocaleDateString('en-IN'),
+      kots: kots
     });
   };
 
@@ -231,7 +245,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
       <div className="content-header">
         <div className="header-title">
           <h1>Payroll & Supplier Salary Engine</h1>
-          <p>Compute attendance earnings and KOT commission (5% share) dynamically.</p>
+          <p>Compute attendance earnings and KOT commission (4% share) dynamically.</p>
         </div>
         
         <div style={{ display: 'flex', gap: '0.5rem', background: 'rgba(0, 0, 0, 0.2)', padding: '0.25rem', borderRadius: 'var(--radius-md)' }}>
@@ -337,7 +351,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
                       <td>{formatCurrency(row.attendance_pay)}</td>
                       <td className="text-green">
                         {formatCurrency(row.commission_amount)}
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '0.25rem' }}>(5% qual.)</span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '0.25rem' }}>(4% qual.)</span>
                       </td>
                       <td>{formatCurrency(row.total_salary)}</td>
                       <td style={{ color: 'var(--accent-crimson)', fontWeight: 600 }}>
@@ -396,7 +410,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
                     <th>Supplier</th>
                     <th>Calculation Range</th>
                     <th>Disbursement Date</th>
-                    <th>Comm. Paid (5%)</th>
+                    <th>Comm. Paid (4%)</th>
                     <th>Attendance Paid</th>
                     <th>Gross Salary</th>
                     <th style={{ color: 'var(--accent-crimson)' }}>Advances Deducted</th>
@@ -514,7 +528,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
                   <td style={{ padding: '0.75rem 0.5rem' }}>
                     <strong>KOT Bill Sales Commission</strong><br />
                     <span style={{ fontSize: '0.75rem', color: '#666' }}>
-                      Commission Rate: 5.0% (Qualifies daily &gt;= ₹{settings?.kot_commission_limit || 250})
+                      Commission Rate: 4.0% (Qualifies daily &gt;= ₹{settings?.kot_commission_limit || 250})
                     </span>
                     {printPayslipData.total_days_with_kots !== undefined && printPayslipData.total_days_with_kots > 0 && (
                       printPayslipData.qualified_days_count < printPayslipData.total_days_with_kots ? (
@@ -581,9 +595,58 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
               </div>
             </div>
 
-            <div style={{ textAlign: 'center', marginTop: '2.5rem', fontSize: '0.75rem', color: '#888', borderTop: '1px dashed #ccc', paddingTop: '0.75rem' }}>
+            <div style={{ textAlign: 'center', marginTop: '2.5rem', fontSize: '0.75rem', color: '#888', borderTop: '1px dashed #ccc', paddingTop: '0.75rem', marginBottom: '1.5rem' }}>
               Thank you for your service at Udumalai Cosmo Recreation Club.
             </div>
+
+            {/* Daily KOT Bills breakdown */}
+            {printPayslipData.kots && printPayslipData.kots.length > 0 && (
+              <div className="print-kot-breakdown-section" style={{ marginTop: '2rem', borderTop: '2px dashed #000', paddingTop: '1.5rem', pageBreakBefore: 'auto' }}>
+                <h3 style={{ fontSize: '1rem', textTransform: 'uppercase', marginBottom: '0.75rem', letterSpacing: '0.5px', fontFamily: 'Montserrat', fontWeight: 700 }}>
+                  Daily KOT Bills & Commission Breakdown (4%)
+                </h3>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #000', background: '#f5f5f5', fontWeight: 'bold' }}>
+                      <th style={{ padding: '0.4rem', textAlign: 'left' }}>Bill Number</th>
+                      <th style={{ padding: '0.4rem', textAlign: 'left' }}>Date</th>
+                      <th style={{ padding: '0.4rem', textAlign: 'left' }}>Time</th>
+                      <th style={{ padding: '0.4rem', textAlign: 'right' }}>Amount</th>
+                      <th style={{ padding: '0.4rem', textAlign: 'right' }}>Commission</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      const dailyTotals = {};
+                      printPayslipData.kots.forEach(k => {
+                        dailyTotals[k.date] = (dailyTotals[k.date] || 0) + (k.amount || 0);
+                      });
+                      const commissionLimit = settings?.kot_commission_limit || 250;
+
+                      return printPayslipData.kots.map((kot, idx) => {
+                        const dailyTotal = dailyTotals[kot.date] || 0;
+                        const isQualified = (dailyTotal * 0.04) >= commissionLimit;
+                        const commission = isQualified ? kot.amount * 0.04 : 0;
+
+                        return (
+                          <tr key={kot.id || idx} style={{ borderBottom: '1px solid #eee', background: isQualified ? 'transparent' : '#fff5f5' }}>
+                            <td style={{ padding: '0.4rem', fontWeight: 600 }}>{kot.bill_number}</td>
+                            <td style={{ padding: '0.4rem' }}>{kot.date}</td>
+                            <td style={{ padding: '0.4rem' }}>{kot.time || '-'}</td>
+                            <td style={{ padding: '0.4rem', textAlign: 'right' }}>{formatCurrency(kot.amount)}</td>
+                            <td style={{ padding: '0.4rem', textAlign: 'right', fontWeight: isQualified ? 'bold' : 'normal' }}>
+                              {isQualified ? formatCurrency(commission) : (
+                                <span style={{ color: '#ef4444', fontStyle: 'italic', fontSize: '0.7rem' }}>Unqualified</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>,
         document.body
@@ -627,7 +690,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
             
             const isDateQualified = (date) => {
               const total = dailyTotals[date] || 0;
-              return (total * 0.05) >= commissionLimit;
+              return (total * 0.04) >= commissionLimit;
             };
             
             const isKotPaid = (kot) => {
@@ -642,7 +705,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
               return sum + (isDateQualified(k.date) ? k.amount : 0);
             }, 0);
             const totalUnqualifiedVolume = totalGrossVolume - totalQualifiedVolume;
-            const totalCommission = totalQualifiedVolume * 0.05;
+            const totalCommission = totalQualifiedVolume * 0.04;
             
             return (
               <>
@@ -659,14 +722,14 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
                       <th style={{ padding: '0.5rem', textAlign: 'left' }}>Time</th>
                       <th style={{ padding: '0.5rem', textAlign: 'left' }}>Status</th>
                       <th style={{ padding: '0.5rem', textAlign: 'right' }}>KOT Bill Amount</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'right' }}>Commission (5%)</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'right' }}>Commission (4%)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {printKotsData.kots.map((kot) => {
                       const isQualified = isDateQualified(kot.date);
                       const isPaid = isKotPaid(kot);
-                      const commission = isQualified ? kot.amount * 0.05 : 0;
+                      const commission = isQualified ? kot.amount * 0.04 : 0;
                       return (
                         <tr key={kot.id} style={{ borderBottom: '1px solid #eee', background: isQualified ? 'transparent' : '#fff5f5' }}>
                           <td style={{ padding: '0.65rem 0.5rem', fontWeight: 600 }}>{kot.bill_number}</td>
@@ -702,7 +765,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
                         {formatCurrency(totalGrossVolume)}
                       </td>
                       <td style={{ padding: '0.65rem 0.5rem', textAlign: 'right' }}>
-                        {formatCurrency(totalGrossVolume * 0.05)}
+                        {formatCurrency(totalGrossVolume * 0.04)}
                       </td>
                     </tr>
                     
@@ -713,7 +776,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
                           -{formatCurrency(totalUnqualifiedVolume)}
                         </td>
                         <td style={{ padding: '0.5rem', textAlign: 'right' }}>
-                          -{formatCurrency(totalUnqualifiedVolume * 0.05)}
+                          -{formatCurrency(totalUnqualifiedVolume * 0.04)}
                         </td>
                       </tr>
                     )}
@@ -729,7 +792,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
                     </tr>
                     
                     <tr style={{ fontSize: '1rem', fontWeight: 700 }}>
-                      <td style={{ padding: '0.75rem 0.5rem', color: '#10b981' }} colSpan="5">Est. Supplier Commission (5.0%)</td>
+                      <td style={{ padding: '0.75rem 0.5rem', color: '#10b981' }} colSpan="5">Est. Supplier Commission (4.0%)</td>
                       <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right', color: '#10b981' }}>
                         {formatCurrency(totalCommission)}
                       </td>

@@ -537,7 +537,7 @@ app.get('/api/payroll/calculate', asyncHandler(async (req, res) => {
       const dailyTotal = dailyTotals[date];
       totalKotAmount += dailyTotal;
       
-      const dailyComm = dailyTotal * 0.05;
+      const dailyComm = dailyTotal * 0.04;
       if (dailyComm >= threshold) {
         commissionAmount += dailyComm;
         qualifiedDaysCount++;
@@ -745,6 +745,45 @@ app.post('/api/settings/change-password', asyncHandler(async (req, res) => {
   res.json({ message: 'Password updated successfully' });
 }));
 
+// Reset/Clear all database collections and re-seed defaults
+app.post('/api/system/reset-database', asyncHandler(async (req, res) => {
+  const { password } = req.body;
+  if (!password) {
+    return res.status(400).json({ error: 'Password is required to reset database' });
+  }
+
+  const doc = await db.collection('settings').doc('admin_password').get();
+  const correctPassword = doc.exists ? doc.data().value : 'cosmo1111';
+
+  if (password !== correctPassword) {
+    return res.status(401).json({ error: 'Invalid admin password. Reset aborted.' });
+  }
+
+  console.log('⚠ API TRIGGERED DATABASE RESET...');
+  const collections = ['attendance', 'kot_bills', 'advances', 'salary_payouts', 'suppliers', 'settings'];
+  
+  for (const coll of collections) {
+    const snapshot = await db.collection(coll).get();
+    if (!snapshot.empty) {
+      const chunks = [];
+      const docs = snapshot.docs;
+      for (let i = 0; i < docs.length; i += 500) {
+        chunks.push(docs.slice(i, i + 500));
+      }
+      for (const chunk of chunks) {
+        const batch = db.batch();
+        chunk.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+    }
+  }
+
+  console.log('🌱 Re-seeding database settings and suppliers...');
+  await initDb();
+  
+  res.json({ success: true, message: 'Database reset successfully and default data re-seeded' });
+}));
+
 
 // ==================== DASHBOARD STATS ROUTE ====================
 
@@ -792,7 +831,7 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
   let estimatedMtdCommission = 0;
   Object.keys(mtdGrouped).forEach(key => {
     const dailyTotal = mtdGrouped[key];
-    const dailyComm = dailyTotal * 0.05;
+    const dailyComm = dailyTotal * 0.04;
     if (dailyComm >= threshold) {
       estimatedMtdCommission += dailyComm;
     }
@@ -822,7 +861,7 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
   let todayQualifiedCommission = 0;
   Object.keys(todayGrouped).forEach(supId => {
     const dailyTotal = todayGrouped[supId];
-    const dailyComm = dailyTotal * 0.05;
+    const dailyComm = dailyTotal * 0.04;
     if (dailyComm >= threshold) {
       todayQualifiedCommission += dailyComm;
     }

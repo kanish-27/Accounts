@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Wine, LayoutDashboard, Users, CalendarCheck, FileSpreadsheet, Calculator, LogOut, Lock, Check, AlertCircle, Sun, Moon, Settings as SettingsIcon, Menu, X, Download } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import Suppliers from './components/Suppliers';
+import MonthlyWorkers from './components/MonthlyWorkers';
 import Attendance from './components/Attendance';
 import KotBills from './components/KotBills';
 import SalaryPayroll from './components/SalaryPayroll';
@@ -135,6 +136,8 @@ function App() {
         return <Dashboard setTab={setCurrentTab} showToast={showToast} API_BASE={API_BASE} settings={settings} />;
       case 'suppliers':
         return <Suppliers showToast={showToast} API_BASE={API_BASE} settings={settings} />;
+      case 'monthly_workers':
+        return <MonthlyWorkers showToast={showToast} API_BASE={API_BASE} settings={settings} />;
       case 'attendance':
         return <Attendance showToast={showToast} API_BASE={API_BASE} settings={settings} />;
       case 'kot':
@@ -221,6 +224,18 @@ function App() {
             >
               <Users size={18} />
               Suppliers Directory
+            </div>
+          </li>
+          <li>
+            <div 
+              className={`nav-link ${currentTab === 'monthly_workers' ? 'active' : ''}`}
+              onClick={() => {
+                setCurrentTab('monthly_workers');
+                setSidebarOpen(false);
+              }}
+            >
+              <Users size={18} />
+              Monthly Workers
             </div>
           </li>
           <li>

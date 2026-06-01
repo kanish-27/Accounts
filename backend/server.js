@@ -28,7 +28,7 @@ const asyncHandler = (fn) => (req, res, next) => {
 
 // Get all suppliers
 app.get('/api/suppliers', asyncHandler(async (req, res) => {
-  const status = req.query.status;
+  const { status, type } = req.query;
   let query = db.collection('suppliers');
   
   if (status) {
@@ -36,13 +36,21 @@ app.get('/api/suppliers', asyncHandler(async (req, res) => {
   }
   
   const snapshot = await query.get();
-  const suppliers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  let suppliers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  
+  if (type) {
+    if (type === 'supplier') {
+      suppliers = suppliers.filter(s => s.type === 'supplier' || !s.type);
+    } else if (type === 'monthly') {
+      suppliers = suppliers.filter(s => s.type === 'monthly');
+    }
+  }
   res.json(suppliers);
 }));
 
 // Add new supplier
 app.post('/api/suppliers', asyncHandler(async (req, res) => {
-  const { name, phone, joining_date, basic_daily_wage, status } = req.body;
+  const { name, phone, joining_date, basic_daily_wage, status, type, monthly_salary } = req.body;
   if (!name) {
     return res.status(400).json({ error: 'Name is required' });
   }
@@ -52,7 +60,9 @@ app.post('/api/suppliers', asyncHandler(async (req, res) => {
     phone: phone || '',
     joining_date: joining_date || new Date().toISOString().split('T')[0],
     basic_daily_wage: parseFloat(basic_daily_wage) || 0,
-    status: status || 'active'
+    status: status || 'active',
+    type: type || 'supplier',
+    monthly_salary: parseFloat(monthly_salary) || 0
   };
 
   let nextId;
@@ -79,7 +89,7 @@ app.post('/api/suppliers', asyncHandler(async (req, res) => {
 // Update supplier
 app.put('/api/suppliers/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { name, phone, joining_date, basic_daily_wage, status } = req.body;
+  const { name, phone, joining_date, basic_daily_wage, status, type, monthly_salary } = req.body;
   
   if (!name) {
     return res.status(400).json({ error: 'Name is required' });
@@ -96,7 +106,9 @@ app.put('/api/suppliers/:id', asyncHandler(async (req, res) => {
     phone: phone || '',
     joining_date: joining_date || '',
     basic_daily_wage: parseFloat(basic_daily_wage) || 0,
-    status: status || 'active'
+    status: status || 'active',
+    type: type || 'supplier',
+    monthly_salary: parseFloat(monthly_salary) || 0
   });
 
   const updatedDoc = await docRef.get();
@@ -145,7 +157,11 @@ app.get('/api/attendance', asyncHandler(async (req, res) => {
   }
 
   const activeSuppliersSnapshot = await db.collection('suppliers').where('status', '==', 'active').get();
-  const suppliers = activeSuppliersSnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
+  const suppliers = activeSuppliersSnapshot.docs.map(doc => ({ 
+    id: doc.id, 
+    name: doc.data().name,
+    type: doc.data().type || 'supplier'
+  }));
 
   const logsSnapshot = await db.collection('attendance').where('date', '==', date).get();
   const logs = logsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -155,6 +171,7 @@ app.get('/api/attendance', asyncHandler(async (req, res) => {
     return {
       supplier_id: supplier.id,
       supplier_name: supplier.name,
+      type: supplier.type,
       date,
       status: log ? log.status : 'Absent',
       shift: log ? log.shift : '11-11'
@@ -196,7 +213,11 @@ app.get('/api/attendance/summary', asyncHandler(async (req, res) => {
   }
 
   const suppliersSnapshot = await db.collection('suppliers').get();
-  const suppliers = suppliersSnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
+  const suppliers = suppliersSnapshot.docs.map(doc => ({ 
+    id: doc.id, 
+    name: doc.data().name,
+    type: doc.data().type || 'supplier'
+  }));
   
   const logsSnapshot = await db.collection('attendance')
     .where('date', '>=', start_date)
@@ -217,13 +238,13 @@ app.get('/api/attendance/summary', asyncHandler(async (req, res) => {
     supplierLogs.forEach(l => {
       if (l.status === 'Present') present++;
       else if (l.status === 'Half Day') half++;
-      else if (log.status === 'Absent') absent++; // Fallback check
       else absent++;
     });
 
     return {
       supplier_id: supplier.id,
       supplier_name: supplier.name,
+      type: supplier.type,
       present_count: present,
       half_count: half,
       absent_count: absent,
@@ -659,13 +680,209 @@ app.get('/api/payroll/history', asyncHandler(async (req, res) => {
   });
 
   const payoutsSnapshot = await db.collection('salary_payouts').get();
-  const payouts = payoutsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  // Filter out monthly worker payouts from main supplier payroll history
+  const payouts = payoutsSnapshot.docs
+    .map(doc => ({ id: doc.id, ...doc.data() }))
+    .filter(p => p.worker_type !== 'monthly');
 
   const advancesSnapshot = await db.collection('advances').get();
   const advances = advancesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
   payouts.forEach(payout => {
     payout.supplier_name = suppliers[payout.supplier_id?.toString()] || 'Unknown';
+    payout.advances = advances.filter(a => a.payout_id === payout.id)
+      .map(a => ({ amount: a.amount, date: a.date, remarks: a.remarks }));
+    payout.advances.sort((a, b) => a.date.localeCompare(b.date));
+  });
+
+  payouts.sort((a, b) => b.payment_date.localeCompare(a.payment_date));
+  res.json(payouts);
+}));
+
+// ==================== MONTHLY WORKER PAYROLL ROUTES ====================
+
+// Calculate monthly salary breakdown for date range
+app.get('/api/payroll/monthly/calculate', asyncHandler(async (req, res) => {
+  const { start_date, end_date } = req.query;
+  
+  if (!start_date || !end_date) {
+    return res.status(400).json({ error: 'start_date and end_date parameters are required' });
+  }
+
+  // Count total days in the period
+  const start = new Date(start_date);
+  const end = new Date(end_date);
+  const totalDays = Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1;
+
+  const suppliersSnapshot = await db.collection('suppliers').where('type', '==', 'monthly').get();
+  const workers = suppliersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  const attendanceSnapshot = await db.collection('attendance')
+    .where('date', '>=', start_date)
+    .where('date', '<=', end_date)
+    .get();
+  const allAttendance = attendanceSnapshot.docs.map(doc => doc.data());
+
+  const advancesSnapshot = await db.collection('advances')
+    .where('status', '==', 'pending')
+    .get();
+  const allAdvances = advancesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  const payoutsSnapshot = await db.collection('salary_payouts').get();
+  const allPayouts = payoutsSnapshot.docs.map(doc => doc.data());
+
+  const report = [];
+
+  const filteredWorkers = workers.filter(worker => {
+    if (worker.status === 'active') return true;
+    const hasAttendance = allAttendance.some(a => a.supplier_id?.toString() === worker.id.toString());
+    return hasAttendance;
+  });
+
+  for (const worker of filteredWorkers) {
+    const workerAttendance = allAttendance.filter(a => a.supplier_id?.toString() === worker.id.toString());
+    let presentCount = 0;
+    let halfDayCount = 0;
+    let absentCount = 0;
+
+    workerAttendance.forEach(log => {
+      if (log.status === 'Present') presentCount++;
+      else if (log.status === 'Half Day') halfDayCount++;
+      else if (log.status === 'Absent') absentCount++;
+    });
+
+    const attendanceDays = presentCount + (halfDayCount * 0.5);
+    const monthlySalary = worker.monthly_salary || 0;
+    const dailyRate = totalDays > 0 ? (monthlySalary / totalDays) : 0;
+    const attendancePay = dailyRate * attendanceDays;
+
+    const pendingAdvances = allAdvances.filter(a => a.supplier_id?.toString() === worker.id.toString() && a.date <= end_date);
+    pendingAdvances.sort((a, b) => a.date.localeCompare(b.date));
+
+    let advanceDeducted = 0;
+    pendingAdvances.forEach(adv => {
+      advanceDeducted += adv.amount;
+    });
+
+    const existingPayout = allPayouts.find(p => 
+      p.supplier_id?.toString() === worker.id.toString() && 
+      !(p.end_date < start_date || p.start_date > end_date)
+    );
+
+    const totalSalary = attendancePay;
+    const netSalary = Math.max(0, totalSalary - advanceDeducted);
+
+    report.push({
+      supplier_id: worker.id,
+      supplier_name: worker.name,
+      monthly_salary: monthlySalary,
+      daily_rate: dailyRate,
+      present_days: presentCount,
+      half_days: halfDayCount,
+      absent_days: absentCount,
+      attendance_days: attendanceDays,
+      attendance_pay: attendancePay,
+      total_salary: totalSalary,
+      advance_deducted: advanceDeducted,
+      net_salary: netSalary,
+      advances: pendingAdvances,
+      already_paid: existingPayout ? true : false,
+      payout_details: existingPayout ? {
+        id: existingPayout.id,
+        start_date: existingPayout.start_date,
+        end_date: existingPayout.end_date,
+        payment_date: existingPayout.payment_date
+      } : null
+    });
+  }
+
+  res.json({
+    start_date,
+    end_date,
+    total_days: totalDays,
+    report
+  });
+}));
+
+// Disburse and record monthly worker payout
+app.post('/api/payroll/monthly/payout', asyncHandler(async (req, res) => {
+  const { records, start_date, end_date, payment_date } = req.body;
+  if (!records || !Array.isArray(records) || !start_date || !end_date) {
+    return res.status(400).json({ error: 'Missing required payroll details' });
+  }
+
+  const pDate = payment_date || new Date().toISOString().split('T')[0];
+  const batch = db.batch();
+  const advancesColl = db.collection('advances');
+
+  for (const record of records) {
+    const { supplier_id, attendance_days, attendance_pay, total_salary, advance_deducted, net_salary } = record;
+    
+    const supplierIdStr = supplier_id.toString();
+
+    const payoutRef = db.collection('salary_payouts').doc();
+    batch.set(payoutRef, {
+      supplier_id: supplierIdStr,
+      start_date,
+      end_date,
+      attendance_days: parseFloat(attendance_days) || 0,
+      total_kot_amount: 0,
+      commission_amount: 0,
+      qualified_days_count: 0,
+      qualified_kot_amount: 0,
+      total_days_with_kots: 0,
+      attendance_pay: parseFloat(attendance_pay) || 0,
+      total_salary: parseFloat(total_salary) || 0,
+      advance_deducted: parseFloat(advance_deducted) || 0,
+      net_salary: net_salary !== undefined ? parseFloat(net_salary) : parseFloat(total_salary),
+      payment_date: pDate,
+      status: 'Paid',
+      worker_type: 'monthly'
+    });
+
+    const advSnapshot = await advancesColl
+      .where('supplier_id', '==', supplierIdStr)
+      .where('status', '==', 'pending')
+      .get();
+
+    advSnapshot.docs.forEach(doc => {
+      if (doc.data().date <= end_date) {
+        batch.update(doc.ref, {
+          status: 'deducted',
+          payout_id: payoutRef.id
+        });
+      }
+    });
+  }
+
+  await batch.commit();
+  res.json({ message: 'Monthly worker payouts recorded successfully.' });
+}));
+
+// Get monthly worker payout history
+app.get('/api/payroll/monthly/history', asyncHandler(async (req, res) => {
+  const suppliersSnapshot = await db.collection('suppliers').where('type', '==', 'monthly').get();
+  const workers = {};
+  suppliersSnapshot.docs.forEach(doc => {
+    workers[doc.id] = doc.data().name;
+  });
+
+  const payoutsSnapshot = await db.collection('salary_payouts').where('worker_type', '==', 'monthly').get();
+  let payouts = payoutsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  // Fallback: If some payouts didn't have worker_type but their supplier exists in the workers dict
+  if (payouts.length === 0) {
+    const allPayoutsSnapshot = await db.collection('salary_payouts').get();
+    payouts = allPayoutsSnapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(p => workers[p.supplier_id?.toString()] !== undefined);
+  }
+
+  const advancesSnapshot = await db.collection('advances').get();
+  const advances = advancesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  payouts.forEach(payout => {
+    payout.supplier_name = workers[payout.supplier_id?.toString()] || 'Unknown';
     payout.advances = advances.filter(a => a.payout_id === payout.id)
       .map(a => ({ amount: a.amount, date: a.date, remarks: a.remarks }));
     payout.advances.sort((a, b) => a.date.localeCompare(b.date));
@@ -842,10 +1059,20 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
   mtdAttendance.forEach(log => {
     const supplier = suppliers.find(s => s.id === log.supplier_id?.toString());
     if (supplier) {
-      if (log.status === 'Present') {
-        estimatedMtdAttPay += (supplier.basic_daily_wage || 0);
-      } else if (log.status === 'Half Day') {
-        estimatedMtdAttPay += ((supplier.basic_daily_wage || 0) * 0.5);
+      const isMonthly = supplier.type === 'monthly';
+      if (isMonthly) {
+        const dailyRate = (supplier.monthly_salary || 0) / 30; // standard 30-day divisor for MTD estimation
+        if (log.status === 'Present') {
+          estimatedMtdAttPay += dailyRate;
+        } else if (log.status === 'Half Day') {
+          estimatedMtdAttPay += (dailyRate * 0.5);
+        }
+      } else {
+        if (log.status === 'Present') {
+          estimatedMtdAttPay += (supplier.basic_daily_wage || 0);
+        } else if (log.status === 'Half Day') {
+          estimatedMtdAttPay += ((supplier.basic_daily_wage || 0) * 0.5);
+        }
       }
     }
   });

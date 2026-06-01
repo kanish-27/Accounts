@@ -198,62 +198,133 @@ export default function Attendance({ showToast, API_BASE }) {
             </div>
           ) : (
             <div>
-              <div className="table-wrapper" style={{ marginBottom: '1.5rem' }}>
-                <table className="custom-table">
-                  <thead>
-                    <tr>
-                      <th>Supplier ID</th>
-                      <th>Supplier Name</th>
-                      <th>Shift Hours</th>
-                      <th style={{ textAlign: 'center' }}>Attendance Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {records.map((rec) => (
-                      <tr key={rec.supplier_id}>
-                        <td>#{rec.supplier_id}</td>
-                        <td style={{ fontWeight: 600 }}>{rec.supplier_name}</td>
-                        <td>
-                          <select 
-                            value={rec.shift} 
-                            onChange={(e) => handleShiftChange(rec.supplier_id, e.target.value)}
-                            className="form-control"
-                            style={{ padding: '0.35rem 0.5rem', fontSize: '0.85rem', minWidth: '130px' }}
-                          >
-                            <option value="11-11">11 AM - 11 PM (Full)</option>
-                            <option value="11-6">11 AM - 6 PM (Day)</option>
-                            <option value="5-11">5 PM - 11 PM (Night)</option>
-                          </select>
-                        </td>
-                        <td style={{ display: 'flex', justifyContent: 'center' }}>
-                          <div className="status-selector">
-                            <button 
-                              onClick={() => handleStatusChange(rec.supplier_id, 'Present')}
-                              className={`status-btn ${rec.status === 'Present' ? 'active present' : ''}`}
-                            >
-                              Present
-                            </button>
-                            <button 
-                              onClick={() => handleStatusChange(rec.supplier_id, 'Half Day')}
-                              className={`status-btn ${rec.status === 'Half Day' ? 'active half-day' : ''}`}
-                            >
-                              Half Day
-                            </button>
-                            <button 
-                              onClick={() => handleStatusChange(rec.supplier_id, 'Absent')}
-                              className={`status-btn ${rec.status === 'Absent' ? 'active absent' : ''}`}
-                            >
-                              Absent
-                            </button>
-                          </div>
-                        </td>
+              {/* Suppliers Section */}
+              <h3 className="section-title" style={{ fontSize: '1.05rem', marginBottom: '0.75rem', color: 'var(--accent-gold-glow)' }}>Suppliers</h3>
+              {records.filter(r => r.type === 'supplier').length === 0 ? (
+                <div style={{ color: 'var(--text-secondary)', padding: '1rem', fontSize: '0.9rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+                  No active suppliers found.
+                </div>
+              ) : (
+                <div className="table-wrapper" style={{ marginBottom: '1.5rem' }}>
+                  <table className="custom-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Shift Hours</th>
+                        <th style={{ textAlign: 'center' }}>Attendance Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {records.filter(r => r.type === 'supplier').map((rec) => (
+                        <tr key={rec.supplier_id}>
+                          <td>#{rec.supplier_id}</td>
+                          <td style={{ fontWeight: 600 }}>{rec.supplier_name}</td>
+                          <td>
+                            <select 
+                              value={rec.shift} 
+                              onChange={(e) => handleShiftChange(rec.supplier_id, e.target.value)}
+                              className="form-control"
+                              style={{ padding: '0.35rem 0.5rem', fontSize: '0.85rem', minWidth: '130px' }}
+                            >
+                              <option value="11-11">11 AM - 11 PM (Full)</option>
+                              <option value="11-6">11 AM - 6 PM (Day)</option>
+                              <option value="5-11">5 PM - 11 PM (Night)</option>
+                            </select>
+                          </td>
+                          <td style={{ display: 'flex', justifyContent: 'center' }}>
+                            <div className="status-selector">
+                              <button 
+                                onClick={() => handleStatusChange(rec.supplier_id, 'Present')}
+                                className={`status-btn ${rec.status === 'Present' ? 'active present' : ''}`}
+                              >
+                                Present
+                              </button>
+                              <button 
+                                onClick={() => handleStatusChange(rec.supplier_id, 'Half Day')}
+                                className={`status-btn ${rec.status === 'Half Day' ? 'active half-day' : ''}`}
+                              >
+                                Half Day
+                              </button>
+                              <button 
+                                onClick={() => handleStatusChange(rec.supplier_id, 'Absent')}
+                                className={`status-btn ${rec.status === 'Absent' ? 'active absent' : ''}`}
+                              >
+                                Absent
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              {/* Monthly Workers Section */}
+              <h3 className="section-title" style={{ fontSize: '1.05rem', marginTop: '2rem', marginBottom: '0.75rem', borderLeftColor: 'var(--accent-blue)', color: 'var(--accent-blue)' }}>Monthly Workers</h3>
+              {records.filter(r => r.type === 'monthly').length === 0 ? (
+                <div style={{ color: 'var(--text-secondary)', padding: '1rem', fontSize: '0.9rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+                  No active monthly workers found.
+                </div>
+              ) : (
+                <div className="table-wrapper" style={{ marginBottom: '1.5rem' }}>
+                  <table className="custom-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Shift Hours</th>
+                        <th style={{ textAlign: 'center' }}>Attendance Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {records.filter(r => r.type === 'monthly').map((rec) => (
+                        <tr key={rec.supplier_id}>
+                          <td>#{rec.supplier_id}</td>
+                          <td style={{ fontWeight: 600 }}>{rec.supplier_name}</td>
+                          <td>
+                            <select 
+                              value={rec.shift} 
+                              onChange={(e) => handleShiftChange(rec.supplier_id, e.target.value)}
+                              className="form-control"
+                              style={{ padding: '0.35rem 0.5rem', fontSize: '0.85rem', minWidth: '130px' }}
+                            >
+                              <option value="11-11">11 AM - 11 PM (Full)</option>
+                              <option value="11-6">11 AM - 6 PM (Day)</option>
+                              <option value="5-11">5 PM - 11 PM (Night)</option>
+                            </select>
+                          </td>
+                          <td style={{ display: 'flex', justifyContent: 'center' }}>
+                            <div className="status-selector">
+                              <button 
+                                onClick={() => handleStatusChange(rec.supplier_id, 'Present')}
+                                className={`status-btn ${rec.status === 'Present' ? 'active present' : ''}`}
+                              >
+                                Present
+                              </button>
+                              <button 
+                                onClick={() => handleStatusChange(rec.supplier_id, 'Half Day')}
+                                className={`status-btn ${rec.status === 'Half Day' ? 'active half-day' : ''}`}
+                              >
+                                Half Day
+                              </button>
+                              <button 
+                                onClick={() => handleStatusChange(rec.supplier_id, 'Absent')}
+                                className={`status-btn ${rec.status === 'Absent' ? 'active absent' : ''}`}
+                              >
+                                Absent
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
                 <button onClick={handleSave} className="btn btn-primary" disabled={loading}>
                   <Save size={18} />
                   {loading ? 'Saving records...' : 'Save Daily Attendance'}
@@ -312,8 +383,8 @@ export default function Attendance({ showToast, API_BASE }) {
               <table className="custom-table">
                 <thead>
                   <tr>
-                    <th>Supplier ID</th>
-                    <th>Supplier Name</th>
+                    <th>ID</th>
+                    <th>Name</th>
                     <th style={{ textAlign: 'center' }}>Present Days</th>
                     <th style={{ textAlign: 'center' }}>Half Days</th>
                     <th style={{ textAlign: 'center' }}>Absent Days</th>
@@ -325,7 +396,12 @@ export default function Attendance({ showToast, API_BASE }) {
                   {summaryData.map((row) => (
                     <tr key={row.supplier_id}>
                       <td>#{row.supplier_id}</td>
-                      <td style={{ fontWeight: 600 }}>{row.supplier_name}</td>
+                      <td style={{ fontWeight: 600 }}>
+                        {row.supplier_name}
+                        <span className={`badge ${row.type === 'monthly' ? 'badge-active' : 'badge-inactive'}`} style={{ fontSize: '0.65rem', padding: '0.1rem 0.35rem', marginLeft: '0.5rem', textTransform: 'capitalize' }}>
+                          {row.type || 'supplier'}
+                        </span>
+                      </td>
                       <td style={{ textAlign: 'center' }}>
                         <span className="badge badge-present">{row.present_count} d</span>
                       </td>
@@ -445,14 +521,14 @@ export default function Attendance({ showToast, API_BASE }) {
               FL2 License Club Bar • Timings: 11:00 AM to 11:00 PM
             </div>
             <h3 style={{ fontSize: '1.1rem', marginTop: '0.75rem', textTransform: 'uppercase', letterSpacing: '1px' }}>
-              Supplier Attendance Summary
+              {printAttendanceData.type === 'monthly' ? 'Worker' : 'Supplier'} Attendance Summary
             </h3>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
             <div>
-              <strong>Supplier Name:</strong> {printAttendanceData.supplier_name}<br />
-              <strong>Supplier ID:</strong> #{printAttendanceData.supplier_id}<br />
+              <strong>{printAttendanceData.type === 'monthly' ? 'Worker' : 'Supplier'} Name:</strong> {printAttendanceData.supplier_name}<br />
+              <strong>{printAttendanceData.type === 'monthly' ? 'Worker' : 'Supplier'} ID:</strong> #{printAttendanceData.supplier_id}<br />
               <strong>Summary Period:</strong> {printAttendanceData.start_date} to {printAttendanceData.end_date}
             </div>
             <div style={{ textAlign: 'right' }}>
@@ -504,7 +580,7 @@ export default function Attendance({ showToast, API_BASE }) {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '4rem', fontSize: '0.85rem' }}>
             <div style={{ borderTop: '1px solid #ccc', paddingTop: '0.5rem', textAlign: 'center' }}>
-              Supplier Signature
+              {printAttendanceData.type === 'monthly' ? 'Worker' : 'Supplier'} Signature
             </div>
             <div style={{ borderTop: '1px solid #ccc', paddingTop: '0.5rem', textAlign: 'center' }}>
               Manager / Auditor Signature

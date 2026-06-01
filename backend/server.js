@@ -753,10 +753,15 @@ app.get('/api/payroll/monthly/calculate', asyncHandler(async (req, res) => {
       else if (log.status === 'Absent') absentCount++;
     });
 
+    const start = new Date(start_date);
+    const year = start.getFullYear();
+    const month = start.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate() || 30;
+
     const attendanceDays = presentCount + (halfDayCount * 0.5);
     const monthlySalary = worker.monthly_salary || 0;
-    const dailyRate = totalDays > 0 ? (monthlySalary / totalDays) : 0;
-    const attendancePay = dailyRate * attendanceDays;
+    const dailyRate = daysInMonth > 0 ? (monthlySalary / daysInMonth) : 0;
+    const attendancePay = Math.round(dailyRate * attendanceDays);
 
     const pendingAdvances = allAdvances.filter(a => a.supplier_id?.toString() === worker.id.toString() && a.date <= end_date);
     pendingAdvances.sort((a, b) => a.date.localeCompare(b.date));

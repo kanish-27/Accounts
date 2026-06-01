@@ -19,6 +19,7 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
   const [formSalary, setFormSalary] = useState('');
   const [formJoinDate, setFormJoinDate] = useState(new Date().toISOString().split('T')[0]);
   const [formStatus, setFormStatus] = useState('active');
+  const [editingWorkerId, setEditingWorkerId] = useState(null);
 
   // Advances sub-state (within selected worker profile)
   const [advanceTab, setAdvanceTab] = useState('pending'); // 'pending' or 'history'
@@ -87,6 +88,7 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
   // ==================== WORKER DIRECTORY HANDLERS ====================
   const openAddModal = () => {
     setEditMode(false);
+    setEditingWorkerId(null);
     setFormName('');
     setFormPhone('');
     setFormSalary('');
@@ -97,6 +99,7 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
 
   const openEditModal = (worker) => {
     setEditMode(true);
+    setEditingWorkerId(worker.id);
     setFormName(worker.name);
     setFormPhone(worker.phone || '');
     setFormSalary(worker.monthly_salary || '');
@@ -124,7 +127,7 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
 
     try {
       setLoading(true);
-      const url = editMode ? `${API_BASE}/suppliers/${selectedWorker.id}` : `${API_BASE}/suppliers`;
+      const url = editMode ? `${API_BASE}/suppliers/${editingWorkerId}` : `${API_BASE}/suppliers`;
       const method = editMode ? 'PUT' : 'POST';
       
       const res = await fetch(url, {
@@ -139,7 +142,7 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
       showToast(editMode ? 'Worker profile updated' : 'Monthly worker added', 'success');
       setShowModal(false);
       fetchWorkers();
-      if (selectedWorker) {
+      if (selectedWorker && selectedWorker.id === editingWorkerId) {
         setSelectedWorker(saved);
       }
     } catch (err) {

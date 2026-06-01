@@ -20,7 +20,7 @@ export default function KotBills({ showToast, API_BASE }) {
 
   const fetchSuppliers = async () => {
     try {
-      const res = await fetch(`${API_BASE}/suppliers?status=active`);
+      const res = await fetch(`${API_BASE}/suppliers?status=active&type=supplier`);
       if (!res.ok) throw new Error('Failed to fetch suppliers');
       const data = await res.json();
       setSuppliers(data);

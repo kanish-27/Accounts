@@ -40,7 +40,7 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
   const fetchSuppliers = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE}/suppliers`);
+      const res = await fetch(`${API_BASE}/suppliers?type=supplier`);
       if (!res.ok) throw new Error('Failed to fetch suppliers');
       const data = await res.json();
       setSuppliers(data);

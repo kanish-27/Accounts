@@ -496,7 +496,9 @@ app.get('/api/payroll/calculate', asyncHandler(async (req, res) => {
   const threshold = thresholdDoc.exists ? parseFloat(thresholdDoc.data().value) : 250;
 
   const suppliersSnapshot = await db.collection('suppliers').get();
-  const suppliers = suppliersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const suppliers = suppliersSnapshot.docs
+    .map(doc => ({ id: doc.id, ...doc.data() }))
+    .filter(s => s.type === 'supplier' || !s.type);
 
   const attendanceSnapshot = await db.collection('attendance')
     .where('date', '>=', start_date)

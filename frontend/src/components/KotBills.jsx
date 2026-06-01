@@ -572,7 +572,7 @@ export default function KotBills({ showToast, API_BASE }) {
               </div>
             </div>
             <div className="card green-header" style={{ padding: '1rem 1.25rem' }}>
-              <span className="card-title" style={{ fontSize: '0.75rem' }}>Supplier Comm. (4%)</span>
+              <span className="card-title" style={{ fontSize: '0.75rem' }}>Supplier Comm.</span>
               <span className="card-value" style={{ fontSize: '1.5rem', marginBottom: 0 }}>{formatCurrency(estimatedCommission)}</span>
               <div className="card-icon-wrapper" style={{ top: '1rem', right: '1rem' }}>
                 <DollarSign size={32} />

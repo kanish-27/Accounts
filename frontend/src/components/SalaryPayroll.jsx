@@ -245,7 +245,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
       <div className="content-header">
         <div className="header-title">
           <h1>Payroll & Supplier Salary Engine</h1>
-          <p>Compute attendance earnings and KOT commission (4% share) dynamically.</p>
+          <p>Compute attendance earnings and KOT commission share dynamically.</p>
         </div>
         
         <div style={{ display: 'flex', gap: '0.5rem', background: 'rgba(0, 0, 0, 0.2)', padding: '0.25rem', borderRadius: 'var(--radius-md)' }}>
@@ -351,7 +351,6 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
                       <td>{formatCurrency(row.attendance_pay)}</td>
                       <td className="text-green">
                         {formatCurrency(row.commission_amount)}
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '0.25rem' }}>(4% qual.)</span>
                       </td>
                       <td>{formatCurrency(row.total_salary)}</td>
                       <td style={{ color: 'var(--accent-crimson)', fontWeight: 600 }}>
@@ -410,7 +409,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
                     <th>Supplier</th>
                     <th>Calculation Range</th>
                     <th>Disbursement Date</th>
-                    <th>Comm. Paid (4%)</th>
+                    <th>Comm. Paid</th>
                     <th>Attendance Paid</th>
                     <th>Gross Salary</th>
                     <th style={{ color: 'var(--accent-crimson)' }}>Advances Deducted</th>

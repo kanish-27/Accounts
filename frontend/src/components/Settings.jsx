@@ -138,7 +138,7 @@ export default function Settings({ showToast, API_BASE, settings, onSettingsUpda
               required
             />
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-              The minimum daily commission (4% share) a supplier must earn to qualify.
+              The minimum daily commission share a supplier must earn to qualify.
               Currently ₹{kotLimit} limit requires daily KOT sales volume of ₹{(kotLimit * 25).toLocaleString('en-IN')}.
             </span>
           </div>

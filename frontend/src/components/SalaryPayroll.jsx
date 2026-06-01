@@ -526,10 +526,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
                 </tr>
                 <tr style={{ borderBottom: '1px solid #eee' }}>
                   <td style={{ padding: '0.75rem 0.5rem' }}>
-                    <strong>KOT Bill Sales Commission</strong><br />
-                    <span style={{ fontSize: '0.75rem', color: '#666' }}>
-                      Commission Rate: 4.0% (Qualifies daily &gt;= ₹{settings?.kot_commission_limit || 250})
-                    </span>
+                    <strong>KOT Bill Sales Commission</strong>
                     {printPayslipData.total_days_with_kots !== undefined && printPayslipData.total_days_with_kots > 0 && (
                       printPayslipData.qualified_days_count < printPayslipData.total_days_with_kots ? (
                         <span style={{ color: '#666', fontStyle: 'italic', display: 'block', marginTop: '0.15rem', fontSize: '0.7rem' }}>
@@ -603,7 +600,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
             {printPayslipData.kots && printPayslipData.kots.length > 0 && (
               <div className="print-kot-breakdown-section" style={{ marginTop: '2rem', borderTop: '2px dashed #000', paddingTop: '1.5rem', pageBreakBefore: 'auto' }}>
                 <h3 style={{ fontSize: '1rem', textTransform: 'uppercase', marginBottom: '0.75rem', letterSpacing: '0.5px', fontFamily: 'Montserrat', fontWeight: 700 }}>
-                  Daily KOT Bills & Commission Breakdown (4%)
+                  Daily KOT Bills & Commission Breakdown
                 </h3>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                   <thead>
@@ -722,7 +719,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
                       <th style={{ padding: '0.5rem', textAlign: 'left' }}>Time</th>
                       <th style={{ padding: '0.5rem', textAlign: 'left' }}>Status</th>
                       <th style={{ padding: '0.5rem', textAlign: 'right' }}>KOT Bill Amount</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'right' }}>Commission (4%)</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'right' }}>Commission</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -792,7 +789,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
                     </tr>
                     
                     <tr style={{ fontSize: '1rem', fontWeight: 700 }}>
-                      <td style={{ padding: '0.75rem 0.5rem', color: '#10b981' }} colSpan="5">Est. Supplier Commission (4.0%)</td>
+                      <td style={{ padding: '0.75rem 0.5rem', color: '#10b981' }} colSpan="5">Est. Supplier Commission</td>
                       <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right', color: '#10b981' }}>
                         {formatCurrency(totalCommission)}
                       </td>

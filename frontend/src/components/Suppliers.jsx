@@ -742,7 +742,7 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
                         <th style={{ padding: '0.5rem', textAlign: 'left' }}>Time</th>
                         <th style={{ padding: '0.5rem', textAlign: 'left' }}>Status</th>
                         <th style={{ padding: '0.5rem', textAlign: 'right' }}>KOT Bill Amount</th>
-                        <th style={{ padding: '0.5rem', textAlign: 'right' }}>Commission (4%)</th>
+                        <th style={{ padding: '0.5rem', textAlign: 'right' }}>Commission</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -812,7 +812,7 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
                       </tr>
                       
                       <tr style={{ fontSize: '1rem', fontWeight: 700 }}>
-                        <td style={{ padding: '0.75rem 0.5rem', color: '#10b981' }} colSpan="5">Est. Supplier Commission (4.0%)</td>
+                        <td style={{ padding: '0.75rem 0.5rem', color: '#10b981' }} colSpan="5">Est. Supplier Commission</td>
                         <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right', color: '#10b981' }}>
                           {formatCurrency(totalCommission)}
                         </td>

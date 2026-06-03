@@ -629,6 +629,12 @@ body::after {
   border: 1px solid var(--accent-blue-border);
 }
 
+.badge-weekoff {
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--accent-gold-glow);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
 .badge-active {
   background: var(--accent-green-bg);
   color: var(--accent-green);
@@ -679,6 +685,12 @@ body::after {
   background: var(--accent-blue);
   color: white;
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+}
+
+.status-btn.active.weekoff {
+  background: var(--accent-gold);
+  color: white;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
 }
 
 /* Visual Analytics & SVG Charts */

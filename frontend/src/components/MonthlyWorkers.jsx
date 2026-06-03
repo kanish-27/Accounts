@@ -286,7 +286,13 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
           attendance_pay: r.attendance_pay,
           total_salary: r.total_salary,
           advance_deducted: r.advance_deducted,
-          net_salary: r.net_salary
+          net_salary: r.net_salary,
+          present_days: r.present_days,
+          half_days: r.half_days,
+          absent_days: r.absent_days,
+          paid_weekoffs: r.paid_weekoffs,
+          unpaid_weekoffs: r.unpaid_weekoffs,
+          weekoff_details: r.weekoff_details
         }))
       };
 
@@ -711,7 +717,10 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
                         <div style={{ fontSize: '0.9rem' }}>
                           Present: <strong>{row.present_days}</strong>, Half: <strong>{row.half_days}</strong>, Absent: <strong>{row.absent_days}</strong>
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Paid Days: {row.attendance_days} d</div>
+                        <div style={{ fontSize: '0.9rem', marginTop: '0.2rem' }}>
+                          Paid Weekoff: <strong>{row.paid_weekoffs}</strong>, Unpaid Weekoff: <strong>{row.unpaid_weekoffs}</strong>
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>Paid Days: {row.attendance_days} d</div>
                       </td>
                       <td>{formatCurrency(row.monthly_salary)}</td>
                       <td>{formatCurrency(row.daily_rate)}/day</td>
@@ -1005,7 +1014,7 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
                   <td style={{ padding: '0.75rem 0.5rem' }}>
                     <strong>Attendance Pro-rated Wages</strong><br />
                     <span style={{ fontSize: '0.75rem', color: '#666' }}>
-                      Present: {printPayslipData.present_days} days • Half Days: {printPayslipData.half_days} days • Absent: {printPayslipData.absent_days} days
+                      Present: {printPayslipData.present_days} days • Half Days: {printPayslipData.half_days} days • Absent: {printPayslipData.absent_days} days • Paid Weekoffs: {printPayslipData.paid_weekoffs || 0} days{printPayslipData.unpaid_weekoffs > 0 ? ` • Unpaid Weekoffs: ${printPayslipData.unpaid_weekoffs} days` : ''}
                     </span>
                   </td>
                   <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>
@@ -1041,6 +1050,23 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
                         -{formatCurrency(printPayslipData.advance_deducted)}
                       </td>
                     </tr>
+                  </>
+                )}
+
+                {printPayslipData.weekoff_details && printPayslipData.weekoff_details.length > 0 && (
+                  <>
+                    <tr style={{ borderBottom: '1px solid #eee', background: '#f9fafb' }}>
+                      <td colSpan="3" style={{ padding: '0.5rem', fontSize: '0.8rem', fontWeight: 700, color: '#4b5563' }}>
+                        WEEKLY OFF TAKEN DETAILS
+                      </td>
+                    </tr>
+                    {printPayslipData.weekoff_details.map((week, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid #eee', fontSize: '0.85rem' }}>
+                        <td colSpan="3" style={{ padding: '0.5rem 0.5rem', paddingLeft: '1.5rem', color: '#555' }}>
+                          Week of {week.week_start}: {week.weekoffs.map(wo => `${wo.date} (${wo.status})`).join(', ')}
+                        </td>
+                      </tr>
+                    ))}
                   </>
                 )}
 

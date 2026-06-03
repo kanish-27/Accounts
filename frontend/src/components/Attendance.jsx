@@ -315,6 +315,12 @@ export default function Attendance({ showToast, API_BASE }) {
                               >
                                 Absent
                               </button>
+                              <button 
+                                onClick={() => handleStatusChange(rec.supplier_id, 'Weekly Off')}
+                                className={`status-btn ${rec.status === 'Weekly Off' ? 'active weekoff' : ''}`}
+                              >
+                                Weekly Off
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -482,7 +488,8 @@ export default function Attendance({ showToast, API_BASE }) {
                         <td style={{ textAlign: 'right' }}>
                           <span className={`badge ${
                             log.status === 'Present' ? 'badge-present' : 
-                            log.status === 'Half Day' ? 'badge-half-day' : 'badge-absent'
+                            log.status === 'Half Day' ? 'badge-half-day' : 
+                            (log.status?.startsWith('Weekly Off') || log.status === 'Weekly Off') ? 'badge-weekoff' : 'badge-absent'
                           }`}>
                             {log.status}
                           </span>

@@ -622,7 +622,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
                       return printPayslipData.kots.map((kot, idx) => {
                         const dailyTotal = dailyTotals[kot.date] || 0;
                         const isQualified = (dailyTotal * 0.04) >= commissionLimit;
-                        const commission = isQualified ? kot.amount * 0.04 : 0;
+                        const potentialCommission = kot.amount * 0.04;
 
                         return (
                           <tr key={kot.id || idx} style={{ borderBottom: '1px solid #eee', background: isQualified ? 'transparent' : '#fff5f5' }}>
@@ -631,8 +631,10 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
                             <td style={{ padding: '0.4rem' }}>{kot.time || '-'}</td>
                             <td style={{ padding: '0.4rem', textAlign: 'right' }}>{formatCurrency(kot.amount)}</td>
                             <td style={{ padding: '0.4rem', textAlign: 'right', fontWeight: isQualified ? 'bold' : 'normal' }}>
-                              {isQualified ? formatCurrency(commission) : (
-                                <span style={{ color: '#ef4444', fontStyle: 'italic', fontSize: '0.7rem' }}>Unqualified</span>
+                              {isQualified ? formatCurrency(potentialCommission) : (
+                                <span style={{ color: '#ef4444', fontStyle: 'italic', fontSize: '0.75rem' }}>
+                                  {formatCurrency(potentialCommission)} (Unqualified)
+                                </span>
                               )}
                             </td>
                           </tr>
@@ -743,9 +745,15 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
                             )}
                           </td>
                           <td style={{ padding: '0.65rem 0.5rem', textAlign: 'right' }}>
-                            {formatCurrency(commission)}
+                            {isQualified ? (
+                              formatCurrency(commission)
+                            ) : (
+                              <span style={{ color: '#ef4444', fontStyle: 'italic', fontSize: '0.75rem' }}>
+                                {formatCurrency(kot.amount * 0.04)} (Unqualified)
+                              </span>
+                            )}
                             {!isQualified && (
-                              <div style={{ fontSize: '0.7rem', color: '#999', fontStyle: 'italic' }}>
+                              <div style={{ fontSize: '0.7rem', color: '#999', fontStyle: 'italic', marginTop: '0.1rem' }}>
                                 (Daily comm. &lt; ₹{commissionLimit})
                               </div>
                             )}

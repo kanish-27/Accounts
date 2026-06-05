@@ -1265,18 +1265,18 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
   let topSupplier = null;
   let maxTotal = 0;
   Object.keys(mtdSupplierTotals).forEach(supId => {
-    const total = mtdSupplierTotals[supId];
-    if (total > maxTotal) {
-      maxTotal = total;
-      const supplier = suppliers.find(s => s.id === supId);
-      if (supplier) {
+    const supplier = suppliers.find(s => s.id === supId);
+    if (supplier && supplier.type !== 'monthly') {
+      const total = mtdSupplierTotals[supId];
+      if (total > maxTotal) {
+        maxTotal = total;
         topSupplier = { name: supplier.name, total };
       }
     }
   });
 
   // 8. Supplier Leaderboard (Sales total in current month)
-  const leaderboard = suppliers.filter(s => s.status === 'active').map(s => {
+  const leaderboard = suppliers.filter(s => s.status === 'active' && s.type !== 'monthly').map(s => {
     return {
       name: s.name,
       total: mtdSupplierTotals[s.id] || 0

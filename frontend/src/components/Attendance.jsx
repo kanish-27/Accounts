@@ -69,20 +69,28 @@ export default function Attendance({ showToast, API_BASE }) {
   useEffect(() => {
     let isMounted = true;
     if (printAttendanceData) {
-      const handleAfterPrint = () => {
-        setTimeout(() => {
-          if (isMounted) setPrintAttendanceData(null);
-        }, 3000);
+      const clearPrintData = () => {
+        if (isMounted) setPrintAttendanceData(null);
       };
-      window.addEventListener('afterprint', handleAfterPrint);
 
       const timer = setTimeout(() => {
         window.print();
       }, 500);
 
+      const focusTimer = setTimeout(() => {
+        window.addEventListener('focus', clearPrintData);
+      }, 1000);
+
+      const handleAfterPrint = () => {
+        setTimeout(clearPrintData, 30000);
+      };
+      window.addEventListener('afterprint', handleAfterPrint);
+
       return () => {
         isMounted = false;
         clearTimeout(timer);
+        clearTimeout(focusTimer);
+        window.removeEventListener('focus', clearPrintData);
         window.removeEventListener('afterprint', handleAfterPrint);
       };
     }

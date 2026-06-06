@@ -159,20 +159,28 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
   useEffect(() => {
     let isMounted = true;
     if (printPayslipData) {
-      const handleAfterPrint = () => {
-        setTimeout(() => {
-          if (isMounted) setPrintPayslipData(null);
-        }, 3000);
+      const clearPrintData = () => {
+        if (isMounted) setPrintPayslipData(null);
       };
-      window.addEventListener('afterprint', handleAfterPrint);
 
       const timer = setTimeout(() => {
         window.print();
       }, 500);
 
+      const focusTimer = setTimeout(() => {
+        window.addEventListener('focus', clearPrintData);
+      }, 1000);
+
+      const handleAfterPrint = () => {
+        setTimeout(clearPrintData, 30000);
+      };
+      window.addEventListener('afterprint', handleAfterPrint);
+
       return () => {
         isMounted = false;
         clearTimeout(timer);
+        clearTimeout(focusTimer);
+        window.removeEventListener('focus', clearPrintData);
         window.removeEventListener('afterprint', handleAfterPrint);
       };
     }
@@ -181,20 +189,28 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
   useEffect(() => {
     let isMounted = true;
     if (printKotsData) {
-      const handleAfterPrint = () => {
-        setTimeout(() => {
-          if (isMounted) setPrintKotsData(null);
-        }, 3000);
+      const clearPrintData = () => {
+        if (isMounted) setPrintKotsData(null);
       };
-      window.addEventListener('afterprint', handleAfterPrint);
 
       const timer = setTimeout(() => {
         window.print();
       }, 500);
 
+      const focusTimer = setTimeout(() => {
+        window.addEventListener('focus', clearPrintData);
+      }, 1000);
+
+      const handleAfterPrint = () => {
+        setTimeout(clearPrintData, 30000);
+      };
+      window.addEventListener('afterprint', handleAfterPrint);
+
       return () => {
         isMounted = false;
         clearTimeout(timer);
+        clearTimeout(focusTimer);
+        window.removeEventListener('focus', clearPrintData);
         window.removeEventListener('afterprint', handleAfterPrint);
       };
     }

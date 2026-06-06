@@ -67,17 +67,21 @@ export default function Attendance({ showToast, API_BASE }) {
 
   // Hook for printing logs using afterprint
   useEffect(() => {
+    let isMounted = true;
     if (printAttendanceData) {
       const handleAfterPrint = () => {
-        setPrintAttendanceData(null);
+        setTimeout(() => {
+          if (isMounted) setPrintAttendanceData(null);
+        }, 3000);
       };
       window.addEventListener('afterprint', handleAfterPrint);
 
       const timer = setTimeout(() => {
         window.print();
-      }, 300);
+      }, 500);
 
       return () => {
+        isMounted = false;
         clearTimeout(timer);
         window.removeEventListener('afterprint', handleAfterPrint);
       };

@@ -157,17 +157,21 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
   };
 
   useEffect(() => {
+    let isMounted = true;
     if (printPayslipData) {
       const handleAfterPrint = () => {
-        setPrintPayslipData(null);
+        setTimeout(() => {
+          if (isMounted) setPrintPayslipData(null);
+        }, 3000);
       };
       window.addEventListener('afterprint', handleAfterPrint);
 
       const timer = setTimeout(() => {
         window.print();
-      }, 300);
+      }, 500);
 
       return () => {
+        isMounted = false;
         clearTimeout(timer);
         window.removeEventListener('afterprint', handleAfterPrint);
       };
@@ -175,17 +179,21 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
   }, [printPayslipData]);
 
   useEffect(() => {
+    let isMounted = true;
     if (printKotsData) {
       const handleAfterPrint = () => {
-        setPrintKotsData(null);
+        setTimeout(() => {
+          if (isMounted) setPrintKotsData(null);
+        }, 3000);
       };
       window.addEventListener('afterprint', handleAfterPrint);
 
       const timer = setTimeout(() => {
         window.print();
-      }, 300);
+      }, 500);
 
       return () => {
+        isMounted = false;
         clearTimeout(timer);
         window.removeEventListener('afterprint', handleAfterPrint);
       };

@@ -329,15 +329,19 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
   };
 
   useEffect(() => {
+    let isMounted = true;
     if (printPayslipData) {
       const handleAfterPrint = () => {
-        setPrintPayslipData(null);
+        setTimeout(() => {
+          if (isMounted) setPrintPayslipData(null);
+        }, 3000);
       };
       window.addEventListener('afterprint', handleAfterPrint);
       const timer = setTimeout(() => {
         window.print();
-      }, 300);
+      }, 500);
       return () => {
+        isMounted = false;
         clearTimeout(timer);
         window.removeEventListener('afterprint', handleAfterPrint);
       };

@@ -1142,6 +1142,12 @@ body.light-theme .login-container {
   }
   
   #root {
+    display: block !important;
+    height: 0 !important;
+    overflow: hidden !important;
+  }
+  
+  #root > * {
     display: none !important;
   }
   

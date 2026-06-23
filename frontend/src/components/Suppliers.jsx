@@ -722,7 +722,7 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
               
               const isDateQualified = (date) => {
                 const total = dailyTotals[date] || 0;
-                return (total * 0.04) >= commissionLimit;
+                return (total * 0.05) >= commissionLimit;
               };
               
               const isKotPaid = (kot) => {
@@ -737,7 +737,7 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
                 return sum + (isDateQualified(k.date) ? k.amount : 0);
               }, 0);
               const totalUnqualifiedVolume = totalGrossVolume - totalQualifiedVolume;
-              const totalCommission = totalQualifiedVolume * 0.04;
+              const totalCommission = totalQualifiedVolume * 0.05;
               
               return (
                 <>
@@ -761,7 +761,7 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
                       {printKotsData.kots.map((kot) => {
                         const isQualified = isDateQualified(kot.date);
                         const isPaid = isKotPaid(kot);
-                        const commission = isQualified ? kot.amount * 0.04 : 0;
+                        const commission = isQualified ? kot.amount * 0.05 : 0;
                         return (
                           <tr key={kot.id} style={{ borderBottom: '1px solid #eee', background: isQualified ? 'transparent' : '#fff5f5' }}>
                             <td style={{ padding: '0.65rem 0.5rem', fontWeight: 600 }}>{kot.bill_number}</td>
@@ -797,7 +797,7 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
                           {formatCurrency(totalGrossVolume)}
                         </td>
                         <td style={{ padding: '0.65rem 0.5rem', textAlign: 'right' }}>
-                          {formatCurrency(totalGrossVolume * 0.04)}
+                          {formatCurrency(totalGrossVolume * 0.05)}
                         </td>
                       </tr>
                       
@@ -808,7 +808,7 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
                             -{formatCurrency(totalUnqualifiedVolume)}
                           </td>
                           <td style={{ padding: '0.5rem', textAlign: 'right' }}>
-                            -{formatCurrency(totalUnqualifiedVolume * 0.04)}
+                            -{formatCurrency(totalUnqualifiedVolume * 0.05)}
                           </td>
                         </tr>
                       )}

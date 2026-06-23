@@ -401,7 +401,7 @@ export default function KotBills({ showToast, API_BASE }) {
 
   // Sum up totals
   const totalAmount = filteredBills.reduce((sum, b) => sum + b.amount, 0);
-  const estimatedCommission = totalAmount * 0.04;
+  const estimatedCommission = totalAmount * 0.05;
 
   const formatCurrency = (amt) => {
     return new Intl.NumberFormat('en-IN', {

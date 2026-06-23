@@ -591,7 +591,7 @@ app.get('/api/payroll/calculate', asyncHandler(async (req, res) => {
       const dailyTotal = dailyTotals[date];
       totalKotAmount += dailyTotal;
       
-      const dailyComm = dailyTotal * 0.04;
+      const dailyComm = dailyTotal * 0.05;
       if (dailyComm >= threshold) {
         commissionAmount += dailyComm;
         qualifiedDaysCount++;
@@ -1204,7 +1204,7 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
   let estimatedMtdCommission = 0;
   Object.keys(mtdGrouped).forEach(key => {
     const dailyTotal = mtdGrouped[key];
-    const dailyComm = dailyTotal * 0.04;
+    const dailyComm = dailyTotal * 0.05;
     if (dailyComm >= threshold) {
       estimatedMtdCommission += dailyComm;
     }
@@ -1247,7 +1247,7 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
   let todayQualifiedCommission = 0;
   Object.keys(todayGrouped).forEach(supId => {
     const dailyTotal = todayGrouped[supId];
-    const dailyComm = dailyTotal * 0.04;
+    const dailyComm = dailyTotal * 0.05;
     if (dailyComm >= threshold) {
       todayQualifiedCommission += dailyComm;
     }

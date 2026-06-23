@@ -721,8 +721,7 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
               const commissionLimit = settings?.kot_commission_limit || 250;
               
               const isDateQualified = (date) => {
-                const total = dailyTotals[date] || 0;
-                return (total * 0.05) >= commissionLimit;
+                return true;
               };
               
               const isKotPaid = (kot) => {

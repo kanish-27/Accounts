@@ -645,7 +645,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
 
                       return printPayslipData.kots.map((kot, idx) => {
                         const dailyTotal = dailyTotals[kot.date] || 0;
-                        const isQualified = (dailyTotal * 0.05) >= commissionLimit;
+                        const isQualified = true;
                         const potentialCommission = kot.amount * 0.05;
 
                         return (
@@ -711,8 +711,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
             const commissionLimit = settings?.kot_commission_limit || 250;
             
             const isDateQualified = (date) => {
-              const total = dailyTotals[date] || 0;
-              return (total * 0.05) >= commissionLimit;
+              return true;
             };
             
             const isKotPaid = (kot) => {

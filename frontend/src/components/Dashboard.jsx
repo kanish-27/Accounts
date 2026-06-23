@@ -138,7 +138,7 @@ export default function Dashboard({ setTab, showToast, API_BASE, settings }) {
         <div className="card green-header">
           <span className="card-title">Today's Comm.</span>
           <span className="card-value" style={{ fontSize: '1.85rem' }}>{formatCurrency(stats.today_qualified_commission || 0)}</span>
-          <span className="card-desc">Qualified daily commission (&gt;= ₹{settings?.kot_commission_limit || 250})</span>
+          <span className="card-desc">Total supplier commission earned today</span>
           <div className="card-icon-wrapper"><DollarSign size={36} /></div>
         </div>
 

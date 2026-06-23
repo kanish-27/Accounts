@@ -125,23 +125,6 @@ export default function Settings({ showToast, API_BASE, settings, onSettingsUpda
             </span>
           </div>
 
-          <div className="form-group" style={{ marginBottom: '1.25rem' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Sliders size={14} /> KOT Salary Commission Daily Limit (₹)
-            </label>
-            <input 
-              type="number" 
-              value={kotLimit} 
-              onChange={(e) => setKotLimit(parseFloat(e.target.value) || 0)} 
-              className="form-control" 
-              min="0"
-              required
-            />
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-              The minimum daily commission share a supplier must earn to qualify.
-              Currently ₹{kotLimit} limit requires daily KOT sales volume of ₹{(kotLimit * 25).toLocaleString('en-IN')}.
-            </span>
-          </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '2rem' }}>
             <button type="submit" className="btn btn-primary" disabled={loading}>

@@ -592,11 +592,9 @@ app.get('/api/payroll/calculate', asyncHandler(async (req, res) => {
       totalKotAmount += dailyTotal;
       
       const dailyComm = dailyTotal * 0.05;
-      if (dailyComm >= threshold) {
-        commissionAmount += dailyComm;
-        qualifiedDaysCount++;
-        qualifiedKotAmount += dailyTotal;
-      }
+      commissionAmount += dailyComm;
+      qualifiedDaysCount++;
+      qualifiedKotAmount += dailyTotal;
     });
 
     const pendingAdvances = allAdvances.filter(a => a.supplier_id?.toString() === supplier.id.toString() && a.date <= end_date);
@@ -1205,9 +1203,7 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
   Object.keys(mtdGrouped).forEach(key => {
     const dailyTotal = mtdGrouped[key];
     const dailyComm = dailyTotal * 0.05;
-    if (dailyComm >= threshold) {
-      estimatedMtdCommission += dailyComm;
-    }
+    estimatedMtdCommission += dailyComm;
   });
 
   const mtdAttendance = allAttendance.filter(a => a.date >= monthStart && a.date <= today);
@@ -1248,9 +1244,7 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
   Object.keys(todayGrouped).forEach(supId => {
     const dailyTotal = todayGrouped[supId];
     const dailyComm = dailyTotal * 0.05;
-    if (dailyComm >= threshold) {
-      todayQualifiedCommission += dailyComm;
-    }
+    todayQualifiedCommission += dailyComm;
   });
 
   // 6. Today's Average KOT bill size

@@ -24,6 +24,38 @@ const asyncHandler = (fn) => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(next);
 };
 
+// Date helpers for payroll calculations
+const getMonday = (dateStr) => {
+  const d = new Date(dateStr);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  return new Date(d.setDate(diff)).toISOString().split('T')[0];
+};
+
+const getSunday = (dateStr) => {
+  const d = new Date(dateStr);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? 0 : 7);
+  return new Date(d.setDate(diff)).toISOString().split('T')[0];
+};
+
+const getMonthStartDate = (dateStr) => {
+  return dateStr.substring(0, 8) + '01';
+};
+
+const getMonthEndDate = (dateStr) => {
+  const parts = dateStr.split('-');
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  const lastDay = new Date(year, month, 0).getDate();
+  const pad = (n) => n < 10 ? '0' + n : n;
+  return `${year}-${pad(month)}-${pad(lastDay)}`;
+};
+
+const minDate = (d1, d2) => d1 < d2 ? d1 : d2;
+const maxDate = (d1, d2) => d1 > d2 ? d1 : d2;
+
+
 // ==================== SUPPLIER ROUTES ====================
 
 // Get all suppliers
@@ -219,8 +251,8 @@ app.get('/api/attendance/summary', asyncHandler(async (req, res) => {
     type: doc.data().type || 'supplier'
   }));
   
-  const extStartDate = getMonday(start_date);
-  const extEndDate = getSunday(end_date);
+  const extStartDate = minDate(getMonday(start_date), getMonthStartDate(start_date));
+  const extEndDate = maxDate(getSunday(end_date), getMonthEndDate(end_date));
 
   const logsSnapshot = await db.collection('attendance')
     .where('date', '>=', extStartDate)
@@ -732,40 +764,25 @@ app.get('/api/payroll/history', asyncHandler(async (req, res) => {
 
 // ==================== MONTHLY WORKER PAYROLL ROUTES ====================
 
-// Helper functions for weekly off calculations
-const getMonday = (dateStr) => {
-  const d = new Date(dateStr);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  return new Date(d.setDate(diff)).toISOString().split('T')[0];
-};
-
-const getSunday = (dateStr) => {
-  const d = new Date(dateStr);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? 0 : 7);
-  return new Date(d.setDate(diff)).toISOString().split('T')[0];
-};
-
 const calculateWorkerAttendanceDetails = (workerLogs, start_date, end_date) => {
   const sortedLogs = [...workerLogs].sort((a, b) => a.date.localeCompare(b.date));
   
-  const weeklyOffsByWeek = {};
+  const weekoffsByMonth = {};
   sortedLogs.forEach(log => {
     if (log.status === 'Weekly Off') {
-      const mon = getMonday(log.date);
-      if (!weeklyOffsByWeek[mon]) {
-        weeklyOffsByWeek[mon] = [];
+      const monthStr = log.date.substring(0, 7); // YYYY-MM
+      if (!weekoffsByMonth[monthStr]) {
+        weekoffsByMonth[monthStr] = [];
       }
-      weeklyOffsByWeek[mon].push(log.date);
+      weekoffsByMonth[monthStr].push(log.date);
     }
   });
 
   const weekoffStatusMap = {};
-  Object.keys(weeklyOffsByWeek).forEach(mon => {
-    const dates = weeklyOffsByWeek[mon].sort();
+  Object.keys(weekoffsByMonth).forEach(monthStr => {
+    const dates = weekoffsByMonth[monthStr].sort();
     dates.forEach((date, index) => {
-      weekoffStatusMap[date] = index === 0 ? 'Paid' : 'Unpaid';
+      weekoffStatusMap[date] = index < 4 ? 'Paid' : 'Unpaid';
     });
   });
 
@@ -837,8 +854,8 @@ app.get('/api/payroll/monthly/calculate', asyncHandler(async (req, res) => {
   const suppliersSnapshot = await db.collection('suppliers').where('type', '==', 'monthly').get();
   const workers = suppliersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-  const extStartDate = getMonday(start_date);
-  const extEndDate = getSunday(end_date);
+  const extStartDate = getMonthStartDate(start_date);
+  const extEndDate = getMonthEndDate(end_date);
 
   const attendanceSnapshot = await db.collection('attendance')
     .where('date', '>=', extStartDate)

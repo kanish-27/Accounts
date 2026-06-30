@@ -3,6 +3,7 @@ import { Wine, LayoutDashboard, Users, CalendarCheck, FileSpreadsheet, Calculato
 import Dashboard from './components/Dashboard';
 import Suppliers from './components/Suppliers';
 import MonthlyWorkers from './components/MonthlyWorkers';
+import Cleaners from './components/Cleaners';
 import Attendance from './components/Attendance';
 import KotBills from './components/KotBills';
 import SalaryPayroll from './components/SalaryPayroll';
@@ -138,6 +139,8 @@ function App() {
         return <Suppliers showToast={showToast} API_BASE={API_BASE} settings={settings} />;
       case 'monthly_workers':
         return <MonthlyWorkers showToast={showToast} API_BASE={API_BASE} settings={settings} />;
+      case 'cleaners':
+        return <Cleaners showToast={showToast} API_BASE={API_BASE} settings={settings} />;
       case 'attendance':
         return <Attendance showToast={showToast} API_BASE={API_BASE} settings={settings} />;
       case 'kot':
@@ -236,6 +239,18 @@ function App() {
             >
               <Users size={18} />
               Monthly Workers
+            </div>
+          </li>
+          <li>
+            <div 
+              className={`nav-link ${currentTab === 'cleaners' ? 'active' : ''}`}
+              onClick={() => {
+                setCurrentTab('cleaners');
+                setSidebarOpen(false);
+              }}
+            >
+              <Users size={18} />
+              Cleaners & Masters
             </div>
           </li>
           <li>

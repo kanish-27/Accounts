@@ -75,6 +75,8 @@ app.get('/api/suppliers', asyncHandler(async (req, res) => {
       suppliers = suppliers.filter(s => s.type === 'supplier' || !s.type);
     } else if (type === 'monthly') {
       suppliers = suppliers.filter(s => s.type === 'monthly');
+    } else if (type === 'cleaner') {
+      suppliers = suppliers.filter(s => s.type === 'cleaner');
     }
   }
   res.json(suppliers);
@@ -82,7 +84,7 @@ app.get('/api/suppliers', asyncHandler(async (req, res) => {
 
 // Add new supplier
 app.post('/api/suppliers', asyncHandler(async (req, res) => {
-  const { name, phone, joining_date, basic_daily_wage, status, type, monthly_salary } = req.body;
+  const { name, phone, joining_date, basic_daily_wage, status, type, monthly_salary, designation } = req.body;
   if (!name) {
     return res.status(400).json({ error: 'Name is required' });
   }
@@ -94,7 +96,8 @@ app.post('/api/suppliers', asyncHandler(async (req, res) => {
     basic_daily_wage: parseFloat(basic_daily_wage) || 0,
     status: status || 'active',
     type: type || 'supplier',
-    monthly_salary: parseFloat(monthly_salary) || 0
+    monthly_salary: parseFloat(monthly_salary) || 0,
+    designation: designation || ''
   };
 
   let nextId;
@@ -121,7 +124,7 @@ app.post('/api/suppliers', asyncHandler(async (req, res) => {
 // Update supplier
 app.put('/api/suppliers/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { name, phone, joining_date, basic_daily_wage, status, type, monthly_salary } = req.body;
+  const { name, phone, joining_date, basic_daily_wage, status, type, monthly_salary, designation } = req.body;
   
   if (!name) {
     return res.status(400).json({ error: 'Name is required' });
@@ -140,7 +143,8 @@ app.put('/api/suppliers/:id', asyncHandler(async (req, res) => {
     basic_daily_wage: parseFloat(basic_daily_wage) || 0,
     status: status || 'active',
     type: type || 'supplier',
-    monthly_salary: parseFloat(monthly_salary) || 0
+    monthly_salary: parseFloat(monthly_salary) || 0,
+    designation: designation || ''
   });
 
   const updatedDoc = await docRef.get();
@@ -1064,6 +1068,224 @@ app.get('/api/payroll/monthly/history', asyncHandler(async (req, res) => {
 }));
 
 
+// ==================== CLEANER PAYROLL ROUTES ====================
+
+// Calculate daily wage salary breakdown for cleaners within a date range
+app.get('/api/payroll/cleaner/calculate', asyncHandler(async (req, res) => {
+  const { start_date, end_date } = req.query;
+  
+  if (!start_date || !end_date) {
+    return res.status(400).json({ error: 'start_date and end_date parameters are required' });
+  }
+
+  // Count total days in the period
+  const start = new Date(start_date);
+  const end = new Date(end_date);
+  const totalDays = Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1;
+
+  const suppliersSnapshot = await db.collection('suppliers').where('type', '==', 'cleaner').get();
+  const cleaners = suppliersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  const attendanceSnapshot = await db.collection('attendance')
+    .where('date', '>=', start_date)
+    .where('date', '<=', end_date)
+    .get();
+  const allAttendance = attendanceSnapshot.docs.map(doc => doc.data());
+
+  const advancesSnapshot = await db.collection('advances')
+    .where('status', '==', 'pending')
+    .get();
+  const allAdvances = advancesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  const payoutsSnapshot = await db.collection('salary_payouts').get();
+  const allPayouts = payoutsSnapshot.docs.map(doc => doc.data());
+
+  const report = [];
+
+  const filteredCleaners = cleaners.filter(cleaner => {
+    if (cleaner.status === 'active') return true;
+    const hasAttendance = allAttendance.some(a => 
+      a.supplier_id?.toString() === cleaner.id.toString() && 
+      a.date >= start_date && 
+      a.date <= end_date
+    );
+    return hasAttendance;
+  });
+
+  for (const cleaner of filteredCleaners) {
+    const cleanerAttendance = allAttendance.filter(a => a.supplier_id?.toString() === cleaner.id.toString());
+    
+    let presentCount = 0;
+    let halfDayCount = 0;
+    let absentCount = 0;
+
+    cleanerAttendance.forEach(log => {
+      if (log.status === 'Present') presentCount++;
+      else if (log.status === 'Half Day') halfDayCount++;
+      else absentCount++; // Absent or Weekly Off counts as absent/non-paid for daily wage cleaners
+    });
+
+    const attendanceDays = presentCount + (halfDayCount * 0.5);
+    const dailyWage = cleaner.basic_daily_wage || 0;
+    const attendancePay = Math.round(dailyWage * attendanceDays);
+
+    const pendingAdvances = allAdvances.filter(a => a.supplier_id?.toString() === cleaner.id.toString() && a.date <= end_date);
+    pendingAdvances.sort((a, b) => a.date.localeCompare(b.date));
+
+    let advanceDeducted = 0;
+    pendingAdvances.forEach(adv => {
+      advanceDeducted += adv.amount;
+    });
+
+    const existingPayout = allPayouts.find(p => 
+      p.supplier_id?.toString() === cleaner.id.toString() && 
+      !(p.end_date < start_date || p.start_date > end_date)
+    );
+
+    const totalSalary = attendancePay;
+    const netSalary = Math.max(0, totalSalary - advanceDeducted);
+
+    report.push({
+      supplier_id: cleaner.id,
+      supplier_name: cleaner.name,
+      designation: cleaner.designation || '',
+      basic_daily_wage: dailyWage,
+      present_days: presentCount,
+      half_days: halfDayCount,
+      absent_days: absentCount,
+      attendance_days: attendanceDays,
+      attendance_pay: attendancePay,
+      total_salary: totalSalary,
+      advance_deducted: advanceDeducted,
+      net_salary: netSalary,
+      advances: pendingAdvances,
+      already_paid: existingPayout ? true : false,
+      payout_details: existingPayout ? {
+        id: existingPayout.id,
+        start_date: existingPayout.start_date,
+        end_date: existingPayout.end_date,
+        payment_date: existingPayout.payment_date
+      } : null
+    });
+  }
+
+  res.json({
+    start_date,
+    end_date,
+    total_days: totalDays,
+    report
+  });
+}));
+
+// Disburse and record cleaner worker payout
+app.post('/api/payroll/cleaner/payout', asyncHandler(async (req, res) => {
+  const { records, start_date, end_date, payment_date } = req.body;
+  if (!records || !Array.isArray(records) || !start_date || !end_date) {
+    return res.status(400).json({ error: 'Missing required payroll details' });
+  }
+
+  const pDate = payment_date || new Date().toISOString().split('T')[0];
+  const batch = db.batch();
+  const advancesColl = db.collection('advances');
+
+  for (const record of records) {
+    const { 
+      supplier_id, 
+      attendance_days, 
+      attendance_pay, 
+      total_salary, 
+      advance_deducted, 
+      net_salary,
+      present_days,
+      half_days,
+      absent_days
+    } = record;
+    
+    const supplierIdStr = supplier_id.toString();
+
+    const payoutRef = db.collection('salary_payouts').doc();
+    batch.set(payoutRef, {
+      supplier_id: supplierIdStr,
+      start_date,
+      end_date,
+      attendance_days: parseFloat(attendance_days) || 0,
+      total_kot_amount: 0,
+      commission_amount: 0,
+      qualified_days_count: 0,
+      qualified_kot_amount: 0,
+      total_days_with_kots: 0,
+      attendance_pay: parseFloat(attendance_pay) || 0,
+      total_salary: parseFloat(total_salary) || 0,
+      advance_deducted: parseFloat(advance_deducted) || 0,
+      net_salary: net_salary !== undefined ? parseFloat(net_salary) : parseFloat(total_salary),
+      present_days: parseInt(present_days) || 0,
+      half_days: parseInt(half_days) || 0,
+      absent_days: parseInt(absent_days) || 0,
+      paid_weekoffs: 0,
+      unpaid_weekoffs: 0,
+      weekoff_details: [],
+      payment_date: pDate,
+      status: 'Paid',
+      worker_type: 'cleaner',
+      designation: record.designation || ''
+    });
+
+    const advSnapshot = await advancesColl
+      .where('supplier_id', '==', supplierIdStr)
+      .where('status', '==', 'pending')
+      .get();
+
+    advSnapshot.docs.forEach(doc => {
+      if (doc.data().date <= end_date) {
+        batch.update(doc.ref, {
+          status: 'deducted',
+          payout_id: payoutRef.id
+        });
+      }
+    });
+  }
+
+  await batch.commit();
+  res.json({ message: 'Cleaner worker payouts recorded successfully.' });
+}));
+
+// Get cleaner worker payout history
+app.get('/api/payroll/cleaner/history', asyncHandler(async (req, res) => {
+  const suppliersSnapshot = await db.collection('suppliers').where('type', '==', 'cleaner').get();
+  const workers = {};
+  const designations = {};
+  suppliersSnapshot.docs.forEach(doc => {
+    workers[doc.id] = doc.data().name;
+    designations[doc.id] = doc.data().designation || '';
+  });
+
+  const payoutsSnapshot = await db.collection('salary_payouts').where('worker_type', '==', 'cleaner').get();
+  let payouts = payoutsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  // Fallback: If some payouts didn't have worker_type but their supplier exists in the workers dict
+  if (payouts.length === 0) {
+    const allPayoutsSnapshot = await db.collection('salary_payouts').get();
+    payouts = allPayoutsSnapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(p => workers[p.supplier_id?.toString()] !== undefined);
+  }
+
+  const advancesSnapshot = await db.collection('advances').get();
+  const advances = advancesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  payouts.forEach(payout => {
+    payout.supplier_name = workers[payout.supplier_id?.toString()] || 'Unknown';
+    payout.designation = payout.designation || designations[payout.supplier_id?.toString()] || '';
+    payout.advances = advances.filter(a => a.payout_id === payout.id)
+      .map(a => ({ amount: a.amount, date: a.date, remarks: a.remarks }));
+    payout.advances.sort((a, b) => a.date.localeCompare(b.date));
+  });
+
+  payouts.sort((a, b) => b.payment_date.localeCompare(a.payment_date));
+  res.json(payouts);
+}));
+
+
 // ==================== SYSTEM CONFIGURATION ROUTES ====================
 
 // Get system settings (excluding password)
@@ -1249,6 +1471,19 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
     estimatedMtdAttPay += (dailyRate * paidDays);
   });
 
+  // Process cleaners (daily wage workers)
+  const cleaners = suppliers.filter(s => s.type === 'cleaner');
+  mtdAttendance.forEach(log => {
+    const cleaner = cleaners.find(c => c.id === log.supplier_id?.toString());
+    if (cleaner) {
+      if (log.status === 'Present') {
+        estimatedMtdAttPay += (cleaner.basic_daily_wage || 0);
+      } else if (log.status === 'Half Day') {
+        estimatedMtdAttPay += ((cleaner.basic_daily_wage || 0) * 0.5);
+      }
+    }
+  });
+
   const estimatedMtdSalary = estimatedMtdCommission + estimatedMtdAttPay;
 
   // 5b. Today's Qualified Commission
@@ -1277,7 +1512,7 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
   let maxTotal = 0;
   Object.keys(mtdSupplierTotals).forEach(supId => {
     const supplier = suppliers.find(s => s.id === supId);
-    if (supplier && supplier.type !== 'monthly') {
+    if (supplier && supplier.type !== 'monthly' && supplier.type !== 'cleaner') {
       const total = mtdSupplierTotals[supId];
       if (total > maxTotal) {
         maxTotal = total;
@@ -1287,7 +1522,7 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
   });
 
   // 8. Supplier Leaderboard (Sales total in current month)
-  const leaderboard = suppliers.filter(s => s.status === 'active' && s.type !== 'monthly').map(s => {
+  const leaderboard = suppliers.filter(s => s.status === 'active' && s.type !== 'monthly' && s.type !== 'cleaner').map(s => {
     return {
       name: s.name,
       total: mtdSupplierTotals[s.id] || 0

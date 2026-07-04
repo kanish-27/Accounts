@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Wine, LayoutDashboard, Users, CalendarCheck, FileSpreadsheet, Calculator, LogOut, Lock, Check, AlertCircle, Sun, Moon, Settings as SettingsIcon, Menu, X, Download } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Wine, LayoutDashboard, Users, CalendarCheck, FileSpreadsheet, Calculator, LogOut, Check, AlertCircle, Sun, Moon, Settings as SettingsIcon, Menu, X, Download, DollarSign } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import Suppliers from './components/Suppliers';
 import MonthlyWorkers from './components/MonthlyWorkers';
@@ -9,6 +9,7 @@ import KotBills from './components/KotBills';
 import SalaryPayroll from './components/SalaryPayroll';
 import Settings from './components/Settings';
 import LandingPage from './components/LandingPage';
+import AdvancesLog from './components/AdvancesLog';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 
   (import.meta.env.DEV ? 'http://localhost:5000/api' : 'https://accounts-va8t.onrender.com/api');
@@ -145,6 +146,8 @@ function App() {
         return <Attendance showToast={showToast} API_BASE={API_BASE} settings={settings} />;
       case 'kot':
         return <KotBills showToast={showToast} API_BASE={API_BASE} settings={settings} />;
+      case 'advances':
+        return <AdvancesLog showToast={showToast} API_BASE={API_BASE} settings={settings} />;
       case 'payroll':
         return <SalaryPayroll showToast={showToast} API_BASE={API_BASE} settings={settings} />;
       case 'settings':
@@ -275,6 +278,18 @@ function App() {
             >
               <FileSpreadsheet size={18} />
               KOT Bills Log
+            </div>
+          </li>
+          <li>
+            <div 
+              className={`nav-link ${currentTab === 'advances' ? 'active' : ''}`}
+              onClick={() => {
+                setCurrentTab('advances');
+                setSidebarOpen(false);
+              }}
+            >
+              <DollarSign size={18} />
+              Advances Log
             </div>
           </li>
           <li>

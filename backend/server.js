@@ -549,6 +549,29 @@ app.delete('/api/advances/:id', asyncHandler(async (req, res) => {
 }));
 
 
+// Helper to check if a date range is fully covered by existing payouts
+function isPeriodFullyPaid(allPayouts, id, start_date, end_date) {
+  const supplierPayouts = allPayouts.filter(p => p.supplier_id?.toString() === id.toString());
+  
+  // Helper to generate array of date strings between start and end (using noon time to avoid timezone offsets)
+  const getDatesInRange = (startStr, endStr) => {
+    const dates = [];
+    const curr = new Date(startStr + 'T12:00:00');
+    const end = new Date(endStr + 'T12:00:00');
+    while (curr <= end) {
+      dates.push(curr.toISOString().split('T')[0]);
+      curr.setDate(curr.getDate() + 1);
+    }
+    return dates;
+  };
+
+  const datesInSelectedRange = getDatesInRange(start_date, end_date);
+  return datesInSelectedRange.length > 0 && datesInSelectedRange.every(date => 
+    supplierPayouts.some(p => p.start_date <= date && p.end_date >= date)
+  );
+}
+
+
 // ==================== PAYROLL & SALARY ROUTES ====================
 
 // Calculate salary breakdown for date range
@@ -585,7 +608,7 @@ app.get('/api/payroll/calculate', asyncHandler(async (req, res) => {
   const allAdvances = advancesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
   const payoutsSnapshot = await db.collection('salary_payouts').get();
-  const allPayouts = payoutsSnapshot.docs.map(doc => doc.data());
+  const allPayouts = payoutsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
   const report = [];
 
@@ -641,10 +664,12 @@ app.get('/api/payroll/calculate', asyncHandler(async (req, res) => {
       advanceDeducted += adv.amount;
     });
 
-    const existingPayout = allPayouts.find(p => 
+    const isFullyPaid = isPeriodFullyPaid(allPayouts, supplier.id, start_date, end_date);
+    const existingPayout = isFullyPaid ? allPayouts.find(p => 
       p.supplier_id?.toString() === supplier.id.toString() && 
-      !(p.end_date < start_date || p.start_date > end_date)
-    );
+      p.start_date <= start_date && 
+      p.end_date >= end_date
+    ) : null;
 
     const totalSalary = attendancePay + commissionAmount;
     const netSalary = Math.max(0, totalSalary - advanceDeducted);
@@ -873,7 +898,7 @@ app.get('/api/payroll/monthly/calculate', asyncHandler(async (req, res) => {
   const allAdvances = advancesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
   const payoutsSnapshot = await db.collection('salary_payouts').get();
-  const allPayouts = payoutsSnapshot.docs.map(doc => doc.data());
+  const allPayouts = payoutsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
   const report = [];
 
@@ -916,10 +941,12 @@ app.get('/api/payroll/monthly/calculate', asyncHandler(async (req, res) => {
       advanceDeducted += adv.amount;
     });
 
-    const existingPayout = allPayouts.find(p => 
+    const isFullyPaid = isPeriodFullyPaid(allPayouts, worker.id, start_date, end_date);
+    const existingPayout = isFullyPaid ? allPayouts.find(p => 
       p.supplier_id?.toString() === worker.id.toString() && 
-      !(p.end_date < start_date || p.start_date > end_date)
-    );
+      p.start_date <= start_date && 
+      p.end_date >= end_date
+    ) : null;
 
     const totalSalary = attendancePay;
     const netSalary = Math.max(0, totalSalary - advanceDeducted);
@@ -1098,7 +1125,7 @@ app.get('/api/payroll/cleaner/calculate', asyncHandler(async (req, res) => {
   const allAdvances = advancesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
   const payoutsSnapshot = await db.collection('salary_payouts').get();
-  const allPayouts = payoutsSnapshot.docs.map(doc => doc.data());
+  const allPayouts = payoutsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
   const report = [];
 
@@ -1137,10 +1164,12 @@ app.get('/api/payroll/cleaner/calculate', asyncHandler(async (req, res) => {
       advanceDeducted += adv.amount;
     });
 
-    const existingPayout = allPayouts.find(p => 
+    const isFullyPaid = isPeriodFullyPaid(allPayouts, cleaner.id, start_date, end_date);
+    const existingPayout = isFullyPaid ? allPayouts.find(p => 
       p.supplier_id?.toString() === cleaner.id.toString() && 
-      !(p.end_date < start_date || p.start_date > end_date)
-    );
+      p.start_date <= start_date && 
+      p.end_date >= end_date
+    ) : null;
 
     const totalSalary = attendancePay;
     const netSalary = Math.max(0, totalSalary - advanceDeducted);
@@ -1609,6 +1638,29 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
     };
   });
 
+  // Calculate unpaid KOT balance (KOT bills not covered by any payouts)
+  let totalUnpaidKots = 0;
+  allKots.forEach(kot => {
+    const supplierPayouts = allPayouts.filter(p => p.supplier_id?.toString() === kot.supplier_id?.toString());
+    const isPaid = supplierPayouts.some(p => p.start_date <= kot.date && p.end_date >= kot.date);
+    if (!isPaid) {
+      totalUnpaidKots += (kot.amount || 0);
+    }
+  });
+
+  // Calculate total outstanding pending advances
+  const advancesSnapshot = await db.collection('advances').where('status', '==', 'pending').get();
+  const totalPendingAdvances = advancesSnapshot.docs.reduce((sum, doc) => sum + (doc.data().amount || 0), 0);
+
+  // Calculate Last Month's KOT volume
+  const prevMonthDate = new Date(today);
+  prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
+  const prevMonthYear = prevMonthDate.getFullYear();
+  const prevMonthVal = String(prevMonthDate.getMonth() + 1).padStart(2, '0');
+  const prevMonthPrefix = `${prevMonthYear}-${prevMonthVal}`;
+  const lastMonthKots = allKots.filter(k => k.date && k.date.startsWith(prevMonthPrefix));
+  const lastMonthKotTotal = lastMonthKots.reduce((sum, k) => sum + (k.amount || 0), 0);
+
   res.json({
     today_date: today,
     today_kot_total: todayKotTotal,
@@ -1622,7 +1674,11 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
     supplier_leaderboard: leaderboard,
     weekly_trend,
     recent_activities: activities.slice(0, 6),
-    recent_kots: dashboardKotsTable
+    recent_kots: dashboardKotsTable,
+    total_pending_advances: totalPendingAdvances,
+    total_unpaid_kots: totalUnpaidKots,
+    mtd_commission: estimatedMtdCommission,
+    last_month_kot_total: lastMonthKotTotal
   });
 }));
 

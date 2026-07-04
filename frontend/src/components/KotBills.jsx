@@ -11,6 +11,7 @@ export default function KotBills({ showToast, API_BASE }) {
   const [dragActive, setDragActive] = useState(false);
   const [parsedResults, setParsedResults] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [importDate, setImportDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Filters State
   const [filterSupplier, setFilterSupplier] = useState('');
@@ -325,15 +326,20 @@ export default function KotBills({ showToast, API_BASE }) {
       showToast('No matching records to import', 'error');
       return;
     }
+    if (!importDate) {
+      showToast('Please select a date first', 'error');
+      return;
+    }
 
     setImporting(true);
     try {
+      const formattedDateForBill = importDate.replace(/-/g, '');
       const payload = {
         bills: parsedResults.groupedBills.map(b => ({
           supplier_id: b.supplier_id.toString(),
-          bill_number: b.bill_number,
+          bill_number: `CSV-${formattedDateForBill}-${b.supplier_id}`,
           amount: b.amount,
-          date: b.date,
+          date: importDate,
           time: '12:00',
           remarks: `CSV Import - ${b.count} items (Excluded ${parsedResults.ignoredCharges} charges)`
         }))
@@ -428,6 +434,19 @@ export default function KotBills({ showToast, API_BASE }) {
           </div>
           
           <div style={{ marginTop: '1rem' }}>
+            <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+              <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.4rem', display: 'block' }}>
+                Select Date for KOT Bills *
+              </label>
+              <input 
+                type="date"
+                value={importDate}
+                onChange={(e) => setImportDate(e.target.value)}
+                className="form-control"
+                required
+              />
+            </div>
+
             {!csvFile ? (
               <div 
                 className={`csv-upload-zone ${dragActive ? 'drag-active' : ''}`}
@@ -528,7 +547,7 @@ export default function KotBills({ showToast, API_BASE }) {
                                   {parsedResults.groupedBills.map((b, idx) => (
                                     <tr key={idx}>
                                       <td style={{ fontWeight: 600 }}>{b.supplier_name}</td>
-                                      <td>{b.date ? b.date.split('-').reverse().map((x, i) => i === 2 ? x.slice(2) : x).join('/') : ''}</td>
+                                      <td>{importDate ? importDate.split('-').reverse().map((x, i) => i === 2 ? x.slice(2) : x).join('/') : ''}</td>
                                       <td>{b.count} rows</td>
                                       <td className="text-gold" style={{ textAlign: 'right', fontWeight: 600 }}>
                                         {formatCurrency(b.amount)}

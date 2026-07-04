@@ -128,27 +128,27 @@ export default function Dashboard({ setTab, showToast, API_BASE, settings }) {
 
       {/* KPI Cards Row (6 Columns) */}
       <div className="card-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1.25rem' }}>
-        <div className="card gold-header">
-          <span className="card-title">Today's KOT</span>
-          <span className="card-value" style={{ fontSize: '1.85rem' }}>{formatCurrency(stats.today_kot_total)}</span>
-          <span className="card-desc">Total sales logged today</span>
-          <div className="card-icon-wrapper"><Wine size={36} /></div>
+        <div className="card blue-header">
+          <span className="card-title">Present Today</span>
+          <span className="card-value" style={{ fontSize: '1.85rem' }}>
+            {stats.present_suppliers_count} / {stats.active_suppliers_count}
+          </span>
+          <span className="card-desc">Staff present today</span>
+          <div className="card-icon-wrapper"><CalendarCheck size={36} /></div>
         </div>
 
         <div className="card green-header">
-          <span className="card-title">Today's Comm.</span>
-          <span className="card-value" style={{ fontSize: '1.85rem' }}>{formatCurrency(stats.today_qualified_commission || 0)}</span>
-          <span className="card-desc">Total supplier commission earned today</span>
+          <span className="card-title">MTD Commission</span>
+          <span className="card-value" style={{ fontSize: '1.85rem' }}>{formatCurrency(stats.mtd_commission || 0)}</span>
+          <span className="card-desc">Total commission earned this month</span>
           <div className="card-icon-wrapper"><DollarSign size={36} /></div>
         </div>
 
-        <div className="card blue-header">
-          <span className="card-title">Today's Attendance</span>
-          <span className="card-value" style={{ fontSize: '1.85rem' }}>
-            {stats.present_suppliers_count} <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>/ {stats.active_suppliers_count}</span>
-          </span>
-          <span className="card-desc">Suppliers present today</span>
-          <div className="card-icon-wrapper"><Users size={36} /></div>
+        <div className="card gold-header">
+          <span className="card-title">Outstanding Advances</span>
+          <span className="card-value" style={{ fontSize: '1.85rem' }}>{formatCurrency(stats.total_pending_advances || 0)}</span>
+          <span className="card-desc">Total unpaid cash advances</span>
+          <div className="card-icon-wrapper"><TrendingUp size={36} /></div>
         </div>
 
         <div className="card gold-header">
@@ -158,11 +158,17 @@ export default function Dashboard({ setTab, showToast, API_BASE, settings }) {
           <div className="card-icon-wrapper"><TrendingUp size={36} /></div>
         </div>
 
-        <div className="card blue-header">
-          <span className="card-title">Avg Bill Today</span>
-          <span className="card-value" style={{ fontSize: '1.85rem' }}>{formatCurrency(stats.avg_bill_today)}</span>
-          <span className="card-desc">Average KOT ticket size</span>
-          <div className="card-icon-wrapper"><Clock size={36} /></div>
+        <div className="card green-header">
+          <span className="card-title">Last Month's KOT</span>
+          <span className="card-value" style={{ fontSize: '1.85rem' }}>{formatCurrency(stats.last_month_kot_total || 0)}</span>
+          <span className="card-desc">
+            Total KOT volume in {(() => {
+              const d = new Date();
+              d.setMonth(d.getMonth() - 1);
+              return d.toLocaleDateString('en-US', { month: 'long' });
+            })()}
+          </span>
+          <div className="card-icon-wrapper"><TrendingUp size={36} /></div>
         </div>
 
         <div className="card gold-header">

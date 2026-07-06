@@ -128,7 +128,7 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this supplier? All associated KOT bills and attendance records will be removed.')) {
+    if (!window.confirm('Are you sure you want to delete this supplier? Their active record will be removed, but all historical KOT bills and logs will be preserved.')) {
       return;
     }
 

@@ -68,7 +68,9 @@ app.get('/api/suppliers', asyncHandler(async (req, res) => {
   }
   
   const snapshot = await query.get();
-  let suppliers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  let suppliers = snapshot.docs
+    .map(doc => ({ id: doc.id, ...doc.data() }))
+    .filter(s => s.status !== 'deleted');
   
   if (type) {
     if (type === 'supplier') {
@@ -151,7 +153,7 @@ app.put('/api/suppliers/:id', asyncHandler(async (req, res) => {
   res.json({ id: updatedDoc.id, ...updatedDoc.data() });
 }));
 
-// Delete supplier
+// Delete supplier (Soft Delete)
 app.delete('/api/suppliers/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
   const docRef = db.collection('suppliers').doc(id);
@@ -160,26 +162,12 @@ app.delete('/api/suppliers/:id', asyncHandler(async (req, res) => {
     return res.status(404).json({ error: 'Supplier not found' });
   }
 
-  await docRef.delete();
+  // Soft delete: set status to 'deleted' so historical logs (KOT, advances, payouts) are preserved
+  await docRef.update({
+    status: 'deleted'
+  });
 
-  // Cascade delete all documents associated with this supplier ID
-  const batch = db.batch();
-  
-  const attSnapshot = await db.collection('attendance').where('supplier_id', '==', id).get();
-  attSnapshot.docs.forEach(d => batch.delete(d.ref));
-  
-  const kotSnapshot = await db.collection('kot_bills').where('supplier_id', '==', id).get();
-  kotSnapshot.docs.forEach(d => batch.delete(d.ref));
-  
-  const advSnapshot = await db.collection('advances').where('supplier_id', '==', id).get();
-  advSnapshot.docs.forEach(d => batch.delete(d.ref));
-  
-  const paySnapshot = await db.collection('salary_payouts').where('supplier_id', '==', id).get();
-  paySnapshot.docs.forEach(d => batch.delete(d.ref));
-  
-  await batch.commit();
-
-  res.json({ message: 'Supplier and all associated logs deleted successfully' });
+  res.json({ message: 'Supplier deleted successfully (historical records preserved)' });
 }));
 
 

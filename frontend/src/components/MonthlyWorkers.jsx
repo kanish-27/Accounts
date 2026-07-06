@@ -154,7 +154,7 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to remove this monthly worker? All attendance, advances, and payout logs will be deleted permanently.')) {
+    if (!window.confirm('Are you sure you want to remove this monthly worker? Their active profile will be removed, but all historical attendance, advances, and payout logs will be preserved.')) {
       return;
     }
     try {

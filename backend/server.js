@@ -184,7 +184,8 @@ app.get('/api/attendance', asyncHandler(async (req, res) => {
   const suppliers = activeSuppliersSnapshot.docs.map(doc => ({ 
     id: doc.id, 
     name: doc.data().name,
-    type: doc.data().type || 'supplier'
+    type: doc.data().type || 'supplier',
+    designation: doc.data().designation || ''
   }));
 
   const logsSnapshot = await db.collection('attendance').where('date', '==', date).get();
@@ -196,6 +197,7 @@ app.get('/api/attendance', asyncHandler(async (req, res) => {
       supplier_id: supplier.id,
       supplier_name: supplier.name,
       type: supplier.type,
+      designation: supplier.designation,
       date,
       status: log ? log.status : 'Absent',
       shift: log ? log.shift : '11-11'
@@ -781,6 +783,9 @@ app.get('/api/payroll/history', asyncHandler(async (req, res) => {
 
 // ==================== MONTHLY WORKER PAYROLL ROUTES ====================
 
+// Monthly workers are paid a daily wage like masters/cleaners, so no Weekly Off is paid
+const PAID_WEEKOFFS_PER_MONTH = 0;
+
 const calculateWorkerAttendanceDetails = (workerLogs, start_date, end_date) => {
   const sortedLogs = [...workerLogs].sort((a, b) => a.date.localeCompare(b.date));
   
@@ -799,7 +804,7 @@ const calculateWorkerAttendanceDetails = (workerLogs, start_date, end_date) => {
   Object.keys(weekoffsByMonth).forEach(monthStr => {
     const dates = weekoffsByMonth[monthStr].sort();
     dates.forEach((date, index) => {
-      weekoffStatusMap[date] = index < 4 ? 'Paid' : 'Unpaid';
+      weekoffStatusMap[date] = index < PAID_WEEKOFFS_PER_MONTH ? 'Paid' : 'Unpaid';
     });
   });
 
@@ -911,14 +916,9 @@ app.get('/api/payroll/monthly/calculate', asyncHandler(async (req, res) => {
     const unpaidWeekoffs = details.unpaidWeekoffCount;
     const weekoffDetails = details.weekoffDetails;
 
-    const start = new Date(start_date);
-    const year = start.getFullYear();
-    const month = start.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate() || 30;
-
+    // Same as masters/cleaners: daily wage × (present + half days × 0.5)
     const attendanceDays = presentCount + (halfDayCount * 0.5) + paidWeekoffs;
-    const monthlySalary = worker.monthly_salary || 0;
-    const dailyRate = daysInMonth > 0 ? (monthlySalary / daysInMonth) : 0;
+    const dailyRate = worker.basic_daily_wage || 0;
     const attendancePay = Math.round(dailyRate * attendanceDays);
 
     const pendingAdvances = allAdvances.filter(a => a.supplier_id?.toString() === worker.id.toString() && a.date <= end_date);
@@ -942,7 +942,7 @@ app.get('/api/payroll/monthly/calculate', asyncHandler(async (req, res) => {
     report.push({
       supplier_id: worker.id,
       supplier_name: worker.name,
-      monthly_salary: monthlySalary,
+      basic_daily_wage: dailyRate,
       daily_rate: dailyRate,
       present_days: presentCount,
       half_days: halfDayCount,
@@ -998,7 +998,8 @@ app.post('/api/payroll/monthly/payout', asyncHandler(async (req, res) => {
       absent_days,
       paid_weekoffs,
       unpaid_weekoffs,
-      weekoff_details
+      weekoff_details,
+      basic_daily_wage
     } = record;
     
     const supplierIdStr = supplier_id.toString();
@@ -1024,6 +1025,7 @@ app.post('/api/payroll/monthly/payout', asyncHandler(async (req, res) => {
       paid_weekoffs: parseInt(paid_weekoffs) || 0,
       unpaid_weekoffs: parseInt(unpaid_weekoffs) || 0,
       weekoff_details: weekoff_details || [],
+      basic_daily_wage: parseFloat(basic_daily_wage) || 0,
       payment_date: pDate,
       status: 'Paid',
       worker_type: 'monthly'
@@ -1478,12 +1480,12 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
     }
   });
 
-  // Process monthly workers with pro-rated weekly offs
+  // Process monthly workers (daily wage, same as masters/cleaners)
   const monthlyWorkers = suppliers.filter(s => s.type === 'monthly');
   monthlyWorkers.forEach(worker => {
     const workerLogs = allAttendance.filter(a => a.supplier_id?.toString() === worker.id.toString());
     const details = calculateWorkerAttendanceDetails(workerLogs, monthStart, today);
-    const dailyRate = (worker.monthly_salary || 0) / 30; // standard 30-day divisor for MTD estimation
+    const dailyRate = worker.basic_daily_wage || 0;
     const paidDays = details.presentCount + (details.halfDayCount * 0.5) + details.paidWeekoffCount;
     estimatedMtdAttPay += (dailyRate * paidDays);
   });

@@ -155,6 +155,90 @@ export default function Attendance({ showToast, API_BASE }) {
     });
   };
 
+  // Masters are 'cleaner' type workers whose designation mentions "master" (e.g. "Food Master")
+  const isMaster = (rec) => rec.type === 'cleaner' && (rec.designation || '').toLowerCase().includes('master');
+  const isMonthlyGroup = (rec) => rec.type === 'monthly' || isMaster(rec);
+
+  const getRoleLabel = (rec) => {
+    if (rec.type === 'monthly') return 'Monthly';
+    if (rec.type === 'cleaner') return rec.designation || 'Cleaner';
+    return 'Supplier';
+  };
+
+  // Keep same-role workers together inside a combined group
+  const roleOrder = (rec) => (rec.type === 'monthly' || rec.type === 'supplier' ? 0 : 1);
+
+  const renderAttendanceGroup = (title, rows, emptyText, color, addTopMargin) => (
+    <>
+      <h3 className="section-title" style={{ fontSize: '1.05rem', marginTop: addTopMargin ? '2rem' : 0, marginBottom: '0.75rem', borderLeftColor: color, color }}>{title}</h3>
+      {rows.length === 0 ? (
+        <div style={{ color: 'var(--text-secondary)', padding: '1rem', fontSize: '0.9rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+          {emptyText}
+        </div>
+      ) : (
+        <div className="table-wrapper" style={{ marginBottom: '1.5rem' }}>
+          <table className="custom-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Role</th>
+                <th>Shift Hours</th>
+                <th style={{ textAlign: 'center' }}>Attendance Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...rows].sort((a, b) => roleOrder(a) - roleOrder(b)).map((rec) => (
+                <tr key={rec.supplier_id}>
+                  <td>#{rec.supplier_id}</td>
+                  <td style={{ fontWeight: 600 }}>{rec.supplier_name}</td>
+                  <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{getRoleLabel(rec)}</td>
+                  <td>
+                    <select
+                      value={rec.shift}
+                      onChange={(e) => handleShiftChange(rec.supplier_id, e.target.value)}
+                      className="form-control"
+                      style={{ padding: '0.35rem 0.5rem', fontSize: '0.85rem', minWidth: '130px' }}
+                    >
+                      <option value="11-11">11 AM - 11 PM (Full)</option>
+                      <option value="11-6">11 AM - 6 PM (Day)</option>
+                      <option value="5-11">5 PM - 11 PM (Night)</option>
+                    </select>
+                  </td>
+                  <td style={{ display: 'flex', justifyContent: 'center' }}>
+                    <div className="status-selector">
+                      <button
+                        onClick={() => handleStatusChange(rec.supplier_id, 'Present')}
+                        className={`status-btn ${rec.status === 'Present' ? 'active present' : ''}`}
+                      >
+                        Present
+                      </button>
+                      {/* Monthly workers are marked only Present or Absent */}
+                      {rec.type !== 'monthly' && (
+                        <button
+                          onClick={() => handleStatusChange(rec.supplier_id, 'Half Day')}
+                          className={`status-btn ${rec.status === 'Half Day' ? 'active half-day' : ''}`}
+                        >
+                          Half Day
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleStatusChange(rec.supplier_id, 'Absent')}
+                        className={`status-btn ${rec.status === 'Absent' ? 'active absent' : ''}`}
+                      >
+                        Absent
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div>
       <div className="content-header">
@@ -210,199 +294,22 @@ export default function Attendance({ showToast, API_BASE }) {
             </div>
           ) : (
             <div>
-              {/* Suppliers Section */}
-              <h3 className="section-title" style={{ fontSize: '1.05rem', marginBottom: '0.75rem', color: 'var(--accent-gold-glow)' }}>Suppliers</h3>
-              {records.filter(r => r.type === 'supplier').length === 0 ? (
-                <div style={{ color: 'var(--text-secondary)', padding: '1rem', fontSize: '0.9rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
-                  No active suppliers found.
-                </div>
-              ) : (
-                <div className="table-wrapper" style={{ marginBottom: '1.5rem' }}>
-                  <table className="custom-table">
-                    <thead>
-                      <tr>
-                        <th>ID</th>
-                        <th>Name</th>
-                        <th>Shift Hours</th>
-                        <th style={{ textAlign: 'center' }}>Attendance Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {records.filter(r => r.type === 'supplier').map((rec) => (
-                        <tr key={rec.supplier_id}>
-                          <td>#{rec.supplier_id}</td>
-                          <td style={{ fontWeight: 600 }}>{rec.supplier_name}</td>
-                          <td>
-                            <select 
-                              value={rec.shift} 
-                              onChange={(e) => handleShiftChange(rec.supplier_id, e.target.value)}
-                              className="form-control"
-                              style={{ padding: '0.35rem 0.5rem', fontSize: '0.85rem', minWidth: '130px' }}
-                            >
-                              <option value="11-11">11 AM - 11 PM (Full)</option>
-                              <option value="11-6">11 AM - 6 PM (Day)</option>
-                              <option value="5-11">5 PM - 11 PM (Night)</option>
-                            </select>
-                          </td>
-                          <td style={{ display: 'flex', justifyContent: 'center' }}>
-                            <div className="status-selector">
-                              <button 
-                                onClick={() => handleStatusChange(rec.supplier_id, 'Present')}
-                                className={`status-btn ${rec.status === 'Present' ? 'active present' : ''}`}
-                              >
-                                Present
-                              </button>
-                              <button 
-                                onClick={() => handleStatusChange(rec.supplier_id, 'Half Day')}
-                                className={`status-btn ${rec.status === 'Half Day' ? 'active half-day' : ''}`}
-                              >
-                                Half Day
-                              </button>
-                              <button 
-                                onClick={() => handleStatusChange(rec.supplier_id, 'Absent')}
-                                className={`status-btn ${rec.status === 'Absent' ? 'active absent' : ''}`}
-                              >
-                                Absent
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+              {/* Suppliers & Cleaners Section */}
+              {renderAttendanceGroup(
+                'Suppliers & Cleaners',
+                records.filter(r => !isMonthlyGroup(r)),
+                'No active suppliers or cleaners found.',
+                'var(--accent-gold-glow)',
+                false
               )}
 
-              {/* Monthly Workers Section */}
-              <h3 className="section-title" style={{ fontSize: '1.05rem', marginTop: '2rem', marginBottom: '0.75rem', borderLeftColor: 'var(--accent-blue)', color: 'var(--accent-blue)' }}>Monthly Workers</h3>
-              {records.filter(r => r.type === 'monthly').length === 0 ? (
-                <div style={{ color: 'var(--text-secondary)', padding: '1rem', fontSize: '0.9rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
-                  No active monthly workers found.
-                </div>
-              ) : (
-                <div className="table-wrapper" style={{ marginBottom: '1.5rem' }}>
-                  <table className="custom-table">
-                    <thead>
-                      <tr>
-                        <th>ID</th>
-                        <th>Name</th>
-                        <th>Shift Hours</th>
-                        <th style={{ textAlign: 'center' }}>Attendance Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {records.filter(r => r.type === 'monthly').map((rec) => (
-                        <tr key={rec.supplier_id}>
-                          <td>#{rec.supplier_id}</td>
-                          <td style={{ fontWeight: 600 }}>{rec.supplier_name}</td>
-                          <td>
-                            <select 
-                              value={rec.shift} 
-                              onChange={(e) => handleShiftChange(rec.supplier_id, e.target.value)}
-                              className="form-control"
-                              style={{ padding: '0.35rem 0.5rem', fontSize: '0.85rem', minWidth: '130px' }}
-                            >
-                              <option value="11-11">11 AM - 11 PM (Full)</option>
-                              <option value="11-6">11 AM - 6 PM (Day)</option>
-                              <option value="5-11">5 PM - 11 PM (Night)</option>
-                            </select>
-                          </td>
-                          <td style={{ display: 'flex', justifyContent: 'center' }}>
-                            <div className="status-selector">
-                              <button 
-                                onClick={() => handleStatusChange(rec.supplier_id, 'Present')}
-                                className={`status-btn ${rec.status === 'Present' ? 'active present' : ''}`}
-                              >
-                                Present
-                              </button>
-                              <button 
-                                onClick={() => handleStatusChange(rec.supplier_id, 'Half Day')}
-                                className={`status-btn ${rec.status === 'Half Day' ? 'active half-day' : ''}`}
-                              >
-                                Half Day
-                              </button>
-                              <button 
-                                onClick={() => handleStatusChange(rec.supplier_id, 'Absent')}
-                                className={`status-btn ${rec.status === 'Absent' ? 'active absent' : ''}`}
-                              >
-                                Absent
-                              </button>
-                              <button 
-                                onClick={() => handleStatusChange(rec.supplier_id, 'Weekly Off')}
-                                className={`status-btn ${rec.status === 'Weekly Off' ? 'active weekoff' : ''}`}
-                              >
-                                Weekly Off
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* Cleaners & Masters Section */}
-              <h3 className="section-title" style={{ fontSize: '1.05rem', marginTop: '2rem', marginBottom: '0.75rem', borderLeftColor: 'var(--accent-blue)', color: 'var(--accent-blue)' }}>Cleaners & Masters</h3>
-              {records.filter(r => r.type === 'cleaner').length === 0 ? (
-                <div style={{ color: 'var(--text-secondary)', padding: '1rem', fontSize: '0.9rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
-                  No active cleaners or masters found.
-                </div>
-              ) : (
-                <div className="table-wrapper" style={{ marginBottom: '1.5rem' }}>
-                  <table className="custom-table">
-                    <thead>
-                      <tr>
-                        <th>ID</th>
-                        <th>Name</th>
-                        <th>Shift Hours</th>
-                        <th style={{ textAlign: 'center' }}>Attendance Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {records.filter(r => r.type === 'cleaner').map((rec) => (
-                        <tr key={rec.supplier_id}>
-                          <td>#{rec.supplier_id}</td>
-                          <td style={{ fontWeight: 600 }}>{rec.supplier_name}</td>
-                          <td>
-                            <select 
-                              value={rec.shift} 
-                              onChange={(e) => handleShiftChange(rec.supplier_id, e.target.value)}
-                              className="form-control"
-                              style={{ padding: '0.35rem 0.5rem', fontSize: '0.85rem', minWidth: '130px' }}
-                            >
-                              <option value="11-11">11 AM - 11 PM (Full)</option>
-                              <option value="11-6">11 AM - 6 PM (Day)</option>
-                              <option value="5-11">5 PM - 11 PM (Night)</option>
-                            </select>
-                          </td>
-                          <td style={{ display: 'flex', justifyContent: 'center' }}>
-                            <div className="status-selector">
-                              <button 
-                                onClick={() => handleStatusChange(rec.supplier_id, 'Present')}
-                                className={`status-btn ${rec.status === 'Present' ? 'active present' : ''}`}
-                              >
-                                Present
-                              </button>
-                              <button 
-                                onClick={() => handleStatusChange(rec.supplier_id, 'Half Day')}
-                                className={`status-btn ${rec.status === 'Half Day' ? 'active half-day' : ''}`}
-                              >
-                                Half Day
-                              </button>
-                              <button 
-                                onClick={() => handleStatusChange(rec.supplier_id, 'Absent')}
-                                className={`status-btn ${rec.status === 'Absent' ? 'active absent' : ''}`}
-                              >
-                                Absent
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+              {/* Monthly Workers & Masters Section */}
+              {renderAttendanceGroup(
+                'Monthly Workers & Masters',
+                records.filter(isMonthlyGroup),
+                'No active monthly workers or masters found.',
+                'var(--accent-blue)',
+                true
               )}
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>

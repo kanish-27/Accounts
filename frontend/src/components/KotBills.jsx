@@ -1,6 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { Wine, Plus, Search, Filter, Trash2, Calendar, User, DollarSign, Upload, X, CheckCircle, FileSpreadsheet } from 'lucide-react';
 
+// Products that never count towards a supplier's KOT amount
+const EXCLUDED_KOT_ITEMS = [
+  'Tumbler', 'Peanut Masala', 'Kara Sev', 'Pori', 'Mixture',
+  'British 300 Ml', 'British 500 Ml',
+  'Rich Aqua 500 Ml', 'Rich Aqua 300 Ml',
+  'Aquafina 500 Ml', 'Aquafina 300 Ml',
+  'Water 500 Ml', 'Water 300 Ml',
+  'Masal Kallai', 'Varu Kallai'
+];
+
+// Lowercase, drop any leading quantity numbers (e.g. "2 Tumbler", "1 x Pori"), then keep only letters/digits
+const normalizeItemName = (name) => name
+  .toLowerCase()
+  .replace(/^(\s*[#(]?\d+(\.\d+)?[)]?\s*(x|×|\*|-|\.|:)?\s*)+/, '')
+  .replace(/[^a-z0-9]/g, '');
+
+const EXCLUDED_KOT_ITEM_KEYS = new Set(EXCLUDED_KOT_ITEMS.map(normalizeItemName));
+
+const isExcludedKotItem = (itemName) => !!itemName && EXCLUDED_KOT_ITEM_KEYS.has(normalizeItemName(itemName));
+
 export default function KotBills({ showToast, API_BASE }) {
   const [bills, setBills] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
@@ -140,6 +160,13 @@ export default function KotBills({ showToast, API_BASE }) {
       return headers.findIndex(h => h.includes('date') || h.includes('createdat') || h.includes('time'));
     })();
 
+    const itemIndex = (() => {
+      let idx = headers.findIndex(h => h === 'itemname' || h === 'item' || h === 'productname' || h === 'product');
+      if (idx !== -1) return idx;
+      return headers.findIndex(h => (h.includes('item') || h.includes('product')) &&
+        !['total', 'price', 'qty', 'quantity', 'id', 'code', 'amount', 'tax', 'discount', 'sum', 'count'].some(w => h.includes(w)));
+    })();
+
     if (categoryIndex === -1) {
       return { error: 'Could not find "category_name" column in CSV.' };
     }
@@ -149,8 +176,12 @@ export default function KotBills({ showToast, API_BASE }) {
     if (totalIndex === -1) {
       return { error: 'Could not find "item_total" column in CSV.' };
     }
+    if (itemIndex === -1) {
+      return { error: 'Could not find "item_name" column in CSV (needed to exclude non-KOT products).' };
+    }
 
     let ignoredCharges = 0;
+    let ignoredItems = 0;
     let matchedSupplierCount = 0;
     let unmatchedSupplierCount = 0;
     let totalRows = lines.length - 1;
@@ -199,10 +230,17 @@ export default function KotBills({ showToast, API_BASE }) {
       const itemTotalStr = row[totalIndex] || '';
       const dateStr = dateIndex !== -1 ? row[dateIndex] : '';
 
-      // Reject if category_name represents charges (e.g. "charges", "charge", "service charges", etc.)
-      const catLower = category.trim().toLowerCase();
-      if (catLower === 'charges' || catLower === 'charge' || catLower.includes('charge')) {
+      const itemName = row[itemIndex] || '';
+
+      // Reject charges (e.g. "Service Charge", "Packing Charges") whether flagged by category or item name
+      if (category.toLowerCase().includes('charge') || itemName.toLowerCase().includes('charge')) {
         ignoredCharges++;
+        continue;
+      }
+
+      // Reject products excluded from KOT (water, snacks, tumbler, etc.)
+      if (isExcludedKotItem(itemName)) {
+        ignoredItems++;
         continue;
       }
 
@@ -264,6 +302,7 @@ export default function KotBills({ showToast, API_BASE }) {
     return {
       totalRows,
       ignoredCharges,
+      ignoredItems,
       matchedSupplierCount,
       unmatchedSupplierCount,
       matchedRows,
@@ -341,7 +380,7 @@ export default function KotBills({ showToast, API_BASE }) {
           amount: b.amount,
           date: importDate,
           time: '12:00',
-          remarks: `CSV Import - ${b.count} items (Excluded ${parsedResults.ignoredCharges} charges)`
+          remarks: `CSV Import - ${b.count} items (Excluded ${parsedResults.ignoredCharges} charges, ${parsedResults.ignoredItems} non-KOT items)`
         }))
       };
 
@@ -467,7 +506,7 @@ export default function KotBills({ showToast, API_BASE }) {
                 <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Drag & Drop CSV File</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>or click to browse files</div>
                 <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                  Requires columns: category_name, assign_to, item_total
+                  Requires columns: item_name, category_name, assign_to, item_total
                 </div>
               </div>
             ) : (
@@ -511,6 +550,10 @@ export default function KotBills({ showToast, API_BASE }) {
                           <div className="csv-stat-item">
                             <span className="csv-stat-label">Excluded Charges</span>
                             <span className="csv-stat-val" style={{ color: 'var(--text-muted)' }}>{parsedResults.ignoredCharges}</span>
+                          </div>
+                          <div className="csv-stat-item">
+                            <span className="csv-stat-label">Excluded Items</span>
+                            <span className="csv-stat-val" style={{ color: 'var(--text-muted)' }}>{parsedResults.ignoredItems}</span>
                           </div>
                           <div className="csv-stat-item">
                             <span className="csv-stat-label">Unmatched Rows</span>

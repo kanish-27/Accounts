@@ -4,8 +4,9 @@ import { Wine, Users, Gamepad2, Utensils, ShieldAlert, Clock, ChevronRight, Sun,
 export default function LandingPage({ 
   onLogin, 
   password, 
-  setPassword, 
-  toast, 
+  setPassword,
+  loggingIn,
+  toast,
   theme, 
   toggleTheme, 
   isClubOpen,
@@ -345,10 +346,11 @@ export default function LandingPage({
                 </button>
                 <button 
                   type="submit" 
-                  className="btn btn-primary" 
+                  className="btn btn-primary"
                   style={{ flex: 2 }}
+                  disabled={loggingIn}
                 >
-                  Unlock Portal
+                  {loggingIn ? 'Connecting to server...' : 'Unlock Portal'}
                 </button>
               </div>
             </form>

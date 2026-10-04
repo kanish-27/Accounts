@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Save, ShieldAlert, Key, Sliders, UserCheck } from 'lucide-react';
+import { cachePassword } from '../authCache';
 
 export default function Settings({ showToast, API_BASE, settings, onSettingsUpdate }) {
   const [kotLimit, setKotLimit] = useState(settings?.kot_commission_limit || 250);
@@ -79,6 +80,8 @@ export default function Settings({ showToast, API_BASE, settings, onSettingsUpda
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to change password');
 
+      // Remember the new password so the next login is instant
+      cachePassword(newPassword);
       showToast('Admin password changed successfully', 'success');
       setCurrentPassword('');
       setNewPassword('');

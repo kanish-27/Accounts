@@ -16,7 +16,7 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
   const [editMode, setEditMode] = useState(false);
   const [formName, setFormName] = useState('');
   const [formPhone, setFormPhone] = useState('');
-  const [formSalary, setFormSalary] = useState('');
+  const [formWage, setFormWage] = useState('');
   const [formJoinDate, setFormJoinDate] = useState(new Date().toISOString().split('T')[0]);
   const [formStatus, setFormStatus] = useState('active');
   const [editingWorkerId, setEditingWorkerId] = useState(null);
@@ -91,7 +91,7 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
     setEditingWorkerId(null);
     setFormName('');
     setFormPhone('');
-    setFormSalary('');
+    setFormWage('');
     setFormJoinDate(new Date().toISOString().split('T')[0]);
     setFormStatus('active');
     setShowModal(true);
@@ -102,7 +102,7 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
     setEditingWorkerId(worker.id);
     setFormName(worker.name);
     setFormPhone(worker.phone || '');
-    setFormSalary(worker.monthly_salary || '');
+    setFormWage(worker.basic_daily_wage || '');
     setFormJoinDate(worker.joining_date);
     setFormStatus(worker.status || 'active');
     setShowModal(true);
@@ -110,8 +110,8 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formName || !formSalary) {
-      showToast('Name and Monthly Salary are required', 'error');
+    if (!formName || !formWage) {
+      showToast('Name and Daily Wage are required', 'error');
       return;
     }
 
@@ -119,10 +119,10 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
       name: formName,
       phone: formPhone,
       joining_date: formJoinDate,
-      monthly_salary: parseFloat(formSalary) || 0,
+      monthly_salary: 0,
       status: formStatus,
       type: 'monthly',
-      basic_daily_wage: 0
+      basic_daily_wage: parseFloat(formWage) || 0
     };
 
     try {
@@ -292,7 +292,8 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
           absent_days: r.absent_days,
           paid_weekoffs: r.paid_weekoffs,
           unpaid_weekoffs: r.unpaid_weekoffs,
-          weekoff_details: r.weekoff_details
+          weekoff_details: r.weekoff_details,
+          basic_daily_wage: r.basic_daily_wage
         }))
       };
 
@@ -445,8 +446,8 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                       <DollarSign size={18} color="var(--text-secondary)" />
                       <div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Monthly Base Salary</div>
-                        <div style={{ fontWeight: 600, color: 'var(--accent-gold-glow)' }}>{formatCurrency(selectedWorker.monthly_salary)} / month</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Daily Wage</div>
+                        <div style={{ fontWeight: 600, color: 'var(--accent-gold-glow)' }}>{formatCurrency(selectedWorker.basic_daily_wage)} / day</div>
                       </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -613,7 +614,7 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
                       <th>ID</th>
                       <th>Name</th>
                       <th>Phone</th>
-                      <th>Monthly Base Salary</th>
+                      <th>Daily Wage</th>
                       <th>Joining Date</th>
                       <th>Status</th>
                       <th style={{ textAlign: 'right' }}>Actions</th>
@@ -625,7 +626,7 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
                         <td>#{worker.id}</td>
                         <td style={{ fontWeight: 600 }}>{worker.name}</td>
                         <td>{worker.phone || '-'}</td>
-                        <td className="text-gold">{formatCurrency(worker.monthly_salary)} / month</td>
+                        <td className="text-gold">{formatCurrency(worker.basic_daily_wage)} / day</td>
                         <td>{worker.joining_date}</td>
                         <td>
                           <span className={`badge ${worker.status === 'active' ? 'badge-present' : 'badge-inactive'}`}>
@@ -708,7 +709,6 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
                   <tr>
                     <th>Worker</th>
                     <th>Attendance Days</th>
-                    <th>Monthly Salary</th>
                     <th>Daily Rate</th>
                     <th>Attendance Pay</th>
                     <th style={{ color: 'var(--accent-crimson)' }}>Advances Deducted</th>
@@ -721,18 +721,17 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
                     <tr key={row.supplier_id}>
                       <td>
                         <div style={{ fontWeight: 600 }}>{row.supplier_name}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Monthly: {formatCurrency(row.monthly_salary)}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Daily: {formatCurrency(row.basic_daily_wage)}</div>
                       </td>
                       <td>
                         <div style={{ fontSize: '0.9rem' }}>
                           Present: <strong>{row.present_days}</strong>, Half: <strong>{row.half_days}</strong>, Absent: <strong>{row.absent_days}</strong>
                         </div>
                         <div style={{ fontSize: '0.9rem', marginTop: '0.2rem' }}>
-                          Paid Weekoff: <strong>{row.paid_weekoffs}</strong>, Unpaid Weekoff: <strong>{row.unpaid_weekoffs}</strong>
+                          Weekly Off (unpaid): <strong>{(row.paid_weekoffs || 0) + (row.unpaid_weekoffs || 0)}</strong>
                         </div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>Paid Days: {row.attendance_days} d</div>
                       </td>
-                      <td>{formatCurrency(row.monthly_salary)}</td>
                       <td>{formatCurrency(row.daily_rate)}/day</td>
                       <td>{formatCurrency(row.attendance_pay)}</td>
                       <td style={{ color: 'var(--accent-crimson)', fontWeight: 600 }}>
@@ -859,14 +858,14 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
 
               <div className="form-row">
                 <div className="form-group">
-                  <label>Monthly Base Salary (₹) *</label>
+                  <label>Daily Wage (₹) *</label>
                   <input 
                     type="number" 
-                    value={formSalary} 
-                    onChange={(e) => setFormSalary(e.target.value)} 
+                    value={formWage} 
+                    onChange={(e) => setFormWage(e.target.value)} 
                     className="form-control" 
                     min="0"
-                    placeholder="e.g. 15000"
+                    placeholder="e.g. 500"
                     required
                   />
                 </div>
@@ -1006,7 +1005,7 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
               </div>
               <div style={{ textAlign: 'right' }}>
                 <strong>Disbursement Date:</strong> {printPayslipData.payment_date}<br />
-                <strong>Monthly Salary:</strong> {formatCurrency(printPayslipData.monthly_salary || printPayslipData.total_salary)}/month<br />
+                <strong>Daily Wage:</strong> {formatCurrency(printPayslipData.basic_daily_wage || (printPayslipData.attendance_days ? printPayslipData.attendance_pay / printPayslipData.attendance_days : 0))}/day<br />
                 <strong>Payout Status:</strong> PAID (CASH/TFR)
               </div>
             </div>
@@ -1022,9 +1021,9 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
               <tbody>
                 <tr style={{ borderBottom: '1px solid #eee' }}>
                   <td style={{ padding: '0.75rem 0.5rem' }}>
-                    <strong>Attendance Pro-rated Wages</strong><br />
+                    <strong>Daily Wages</strong><br />
                     <span style={{ fontSize: '0.75rem', color: '#666' }}>
-                      Present: {printPayslipData.present_days} days • Half Days: {printPayslipData.half_days} days • Absent: {printPayslipData.absent_days} days • Paid Weekoffs: {printPayslipData.paid_weekoffs || 0} days{printPayslipData.unpaid_weekoffs > 0 ? ` • Unpaid Weekoffs: ${printPayslipData.unpaid_weekoffs} days` : ''}
+                      Present: {printPayslipData.present_days} days • Half Days: {printPayslipData.half_days} days • Absent: {printPayslipData.absent_days} days {printPayslipData.paid_weekoffs > 0 ? ` • Paid Weekoffs: ${printPayslipData.paid_weekoffs} days` : ''}{printPayslipData.unpaid_weekoffs > 0 ? ` • Unpaid Weekoffs: ${printPayslipData.unpaid_weekoffs} days` : ''}
                     </span>
                   </td>
                   <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>

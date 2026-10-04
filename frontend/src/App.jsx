@@ -10,6 +10,7 @@ import SalaryPayroll from './components/SalaryPayroll';
 import Settings from './components/Settings';
 import LandingPage from './components/LandingPage';
 import AdvancesLog from './components/AdvancesLog';
+import { matchesCachedPassword, cachePassword, clearCachedPassword } from './authCache';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 
   (import.meta.env.DEV ? 'http://localhost:5000/api' : 'https://accounts-va8t.onrender.com/api');
@@ -17,6 +18,7 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL ||
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
+  const [loggingIn, setLoggingIn] = useState(false);
   const [currentTab, setCurrentTab] = useState('dashboard');
   const [toast, setToast] = useState(null); // { message, type: 'success' | 'error' }
   const [theme, setTheme] = useState('dark');
@@ -96,25 +98,53 @@ function App() {
     setToast({ message, type });
   };
 
+  const verifyPasswordWithServer = async (pw) => {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw })
+    });
+    const data = await res.json();
+    return { ok: res.ok && data.success, rejected: res.status === 401, error: data.error };
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (loggingIn) return;
+    const pw = password;
+
+    // Instant login when this password was already accepted by the server before
+    if (await matchesCachedPassword(pw)) {
+      setIsAuthenticated(true);
+      showToast('Admin logged in successfully', 'success');
+      // Re-check in the background; only a definite rejection logs out (network errors are ignored)
+      verifyPasswordWithServer(pw).then(result => {
+        if (result.rejected) {
+          clearCachedPassword();
+          setIsAuthenticated(false);
+          setPassword('');
+          showToast('Admin password has changed. Please log in again.', 'error');
+        }
+      }).catch(err => console.error(err));
+      return;
+    }
+
     try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password })
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      setLoggingIn(true);
+      const result = await verifyPasswordWithServer(pw);
+      if (result.ok) {
+        cachePassword(pw);
         setIsAuthenticated(true);
         showToast('Admin logged in successfully', 'success');
         fetchSettings();
       } else {
-        showToast(data.error || 'Invalid Admin password', 'error');
+        showToast(result.error || 'Invalid Admin password', 'error');
       }
     } catch (error) {
       console.error(error);
       showToast('Error connecting to backend server', 'error');
+    } finally {
+      setLoggingIn(false);
     }
   };
 
@@ -163,7 +193,8 @@ function App() {
       <LandingPage 
         onLogin={handleLogin} 
         password={password} 
-        setPassword={setPassword} 
+        setPassword={setPassword}
+        loggingIn={loggingIn}
         toast={toast}
         theme={theme}
         toggleTheme={toggleTheme}

@@ -121,8 +121,11 @@ export default function AdvancesLog({ showToast, API_BASE }) {
         .reduce((sum, adv) => sum + (adv.amount || 0), 0)
     : processedAdvances.reduce((sum, adv) => sum + (adv.amount || 0), 0);
 
-  const totalPendingRecoveries = processedAdvances
-    .filter(adv => adv.status === 'pending')
+  const currentMonthPrefix = todayStr.slice(0, 7); // YYYY-MM
+  const currentMonthLabel = new Date(`${currentMonthPrefix}-01T00:00:00`)
+    .toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+  const monthUnsettledAdvances = processedAdvances
+    .filter(adv => adv.status === 'pending' && adv.date?.startsWith(currentMonthPrefix))
     .reduce((sum, adv) => sum + (adv.amount || 0), 0);
 
   // Handle Deletion
@@ -251,10 +254,10 @@ export default function AdvancesLog({ showToast, API_BASE }) {
 
         <div className="card crimson-header" style={{ padding: '1.25rem 1.5rem', position: 'relative' }}>
           <span className="card-title" style={{ fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Total Pending Recoveries
+            Unsettled Advances ({currentMonthLabel})
           </span>
           <span className="card-value" style={{ fontSize: '1.85rem', fontWeight: 700, margin: '0.5rem 0 0 0' }}>
-            {formatCurrency(totalPendingRecoveries)}
+            {formatCurrency(monthUnsettledAdvances)}
           </span>
           <div className="card-icon-wrapper" style={{ top: '1.25rem', right: '1.5rem' }}>
             <Users size={28} />

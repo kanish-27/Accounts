@@ -218,7 +218,7 @@ export default function SalaryPayroll({ showToast, API_BASE, settings }) {
 
   const handlePrintHistoryKOTs = async (payout) => {
     try {
-      const kotRes = await fetch(`${API_BASE}/kot?supplier_id=${payout.supplier_id}`);
+      const kotRes = await fetch(`${API_BASE}/kot?supplier_id=${payout.supplier_id}&start_date=${payout.start_date}&end_date=${payout.end_date}`);
       if (!kotRes.ok) throw new Error('Failed to fetch KOTs');
       const allKots = await kotRes.json();
       

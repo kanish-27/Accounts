@@ -182,7 +182,7 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
       // Get all payouts for this supplier
       let payouts = [];
       try {
-        const payoutRes = await fetch(`${API_BASE}/payroll/history`);
+        const payoutRes = await fetch(`${API_BASE}/payroll/history?supplier_id=${supplier.id}`);
         if (payoutRes.ok) {
           const allPayouts = await payoutRes.json();
           payouts = allPayouts.filter(p => p.supplier_id?.toString() === supplier.id.toString());

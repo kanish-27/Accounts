@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { AggregateField } from 'firebase-admin/firestore';
 import { initDb } from './db.js';
 
 const app = express();
@@ -326,8 +327,18 @@ app.get('/api/kot', asyncHandler(async (req, res) => {
     suppliers[doc.id] = doc.data().name;
   });
 
-  let snapshot = await db.collection('kot_bills').get();
-  let bills = snapshot.docs.map(doc => ({ 
+  // Query only the bills needed instead of the whole collection (Firestore bills per document read).
+  // A date range is usually the narrower filter; supplier + date together would need a composite index.
+  let query = db.collection('kot_bills');
+  if (start_date || end_date) {
+    if (start_date) query = query.where('date', '>=', start_date);
+    if (end_date) query = query.where('date', '<=', end_date);
+  } else if (supplier_id) {
+    query = query.where('supplier_id', '==', supplier_id.toString());
+  }
+
+  const snapshot = await query.get();
+  let bills = snapshot.docs.map(doc => ({
     id: doc.id, 
     ...doc.data(), 
     supplier_name: suppliers[doc.data().supplier_id?.toString()] || 'Unknown'
@@ -471,7 +482,11 @@ app.get('/api/advances', asyncHandler(async (req, res) => {
     suppliers[doc.id] = doc.data().name;
   });
 
-  let snapshot = await db.collection('advances').get();
+  let query = db.collection('advances');
+  if (supplier_id) query = query.where('supplier_id', '==', supplier_id.toString());
+  if (status) query = query.where('status', '==', status);
+
+  const snapshot = await query.get();
   let advances = snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data(),
@@ -556,10 +571,30 @@ function isPeriodFullyPaid(allPayouts, id, start_date, end_date) {
   };
 
   const datesInSelectedRange = getDatesInRange(start_date, end_date);
-  return datesInSelectedRange.length > 0 && datesInSelectedRange.every(date => 
+  return datesInSelectedRange.length > 0 && datesInSelectedRange.every(date =>
     supplierPayouts.some(p => p.start_date <= date && p.end_date >= date)
   );
 }
+
+// Only payouts whose period overlaps [start_date, end_date] matter for the "already paid" check
+const fetchOverlappingPayouts = async (start_date, end_date) => {
+  const snapshot = await db.collection('salary_payouts').where('end_date', '>=', start_date).get();
+  return snapshot.docs
+    .map(doc => ({ id: doc.id, ...doc.data() }))
+    .filter(p => p.start_date <= end_date);
+};
+
+// Advances deducted in the given payouts ('in' queries accept at most 30 values each)
+const fetchAdvancesForPayouts = async (payoutIds) => {
+  const chunks = [];
+  for (let i = 0; i < payoutIds.length; i += 30) {
+    chunks.push(payoutIds.slice(i, i + 30));
+  }
+  const snapshots = await Promise.all(
+    chunks.map(ids => db.collection('advances').where('payout_id', 'in', ids).get())
+  );
+  return snapshots.flatMap(snapshot => snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+};
 
 
 // ==================== PAYROLL & SALARY ROUTES ====================
@@ -597,8 +632,7 @@ app.get('/api/payroll/calculate', asyncHandler(async (req, res) => {
     .get();
   const allAdvances = advancesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-  const payoutsSnapshot = await db.collection('salary_payouts').get();
-  const allPayouts = payoutsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const allPayouts = await fetchOverlappingPayouts(start_date, end_date);
 
   const report = [];
 
@@ -761,14 +795,17 @@ app.get('/api/payroll/history', asyncHandler(async (req, res) => {
     suppliers[doc.id] = doc.data().name;
   });
 
-  const payoutsSnapshot = await db.collection('salary_payouts').get();
+  const { supplier_id } = req.query;
+  let payoutsQuery = db.collection('salary_payouts');
+  if (supplier_id) payoutsQuery = payoutsQuery.where('supplier_id', '==', supplier_id.toString());
+
+  const payoutsSnapshot = await payoutsQuery.get();
   // Filter out monthly worker payouts from main supplier payroll history
   const payouts = payoutsSnapshot.docs
     .map(doc => ({ id: doc.id, ...doc.data() }))
     .filter(p => p.worker_type !== 'monthly');
 
-  const advancesSnapshot = await db.collection('advances').get();
-  const advances = advancesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const advances = await fetchAdvancesForPayouts(payouts.map(p => p.id));
 
   payouts.forEach(payout => {
     payout.supplier_name = suppliers[payout.supplier_id?.toString()] || 'Unknown';
@@ -890,8 +927,7 @@ app.get('/api/payroll/monthly/calculate', asyncHandler(async (req, res) => {
     .get();
   const allAdvances = advancesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-  const payoutsSnapshot = await db.collection('salary_payouts').get();
-  const allPayouts = payoutsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const allPayouts = await fetchOverlappingPayouts(start_date, end_date);
 
   const report = [];
 
@@ -1070,8 +1106,7 @@ app.get('/api/payroll/monthly/history', asyncHandler(async (req, res) => {
       .filter(p => workers[p.supplier_id?.toString()] !== undefined);
   }
 
-  const advancesSnapshot = await db.collection('advances').get();
-  const advances = advancesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const advances = await fetchAdvancesForPayouts(payouts.map(p => p.id));
 
   payouts.forEach(payout => {
     payout.supplier_name = workers[payout.supplier_id?.toString()] || 'Unknown';
@@ -1114,8 +1149,7 @@ app.get('/api/payroll/cleaner/calculate', asyncHandler(async (req, res) => {
     .get();
   const allAdvances = advancesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-  const payoutsSnapshot = await db.collection('salary_payouts').get();
-  const allPayouts = payoutsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const allPayouts = await fetchOverlappingPayouts(start_date, end_date);
 
   const report = [];
 
@@ -1289,8 +1323,7 @@ app.get('/api/payroll/cleaner/history', asyncHandler(async (req, res) => {
       .filter(p => workers[p.supplier_id?.toString()] !== undefined);
   }
 
-  const advancesSnapshot = await db.collection('advances').get();
-  const advances = advancesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const advances = await fetchAdvancesForPayouts(payouts.map(p => p.id));
 
   payouts.forEach(payout => {
     payout.supplier_name = workers[payout.supplier_id?.toString()] || 'Unknown';
@@ -1420,21 +1453,43 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
   const today = new Date().toISOString().split('T')[0];
   const monthStart = today.substring(0, 7) + '-01';
 
-  const thresholdDoc = await db.collection('settings').doc('kot_commission_limit').get();
-  const threshold = thresholdDoc.exists ? parseFloat(thresholdDoc.data().value) : 250;
+  const weekStartDate = new Date();
+  weekStartDate.setDate(weekStartDate.getDate() - 6);
+  const weekStart = weekStartDate.toISOString().split('T')[0];
 
-  // Fetch collections
-  const suppliersSnapshot = await db.collection('suppliers').get();
+  const [year, month] = today.split('-').map(Number);
+  const prevMonthPrefix = month === 1
+    ? `${year - 1}-12`
+    : `${year}-${String(month - 1).padStart(2, '0')}`;
+
+  // Read only the date ranges the dashboard shows, never whole collections
+  // (Firestore's free tier allows 50,000 document reads per day).
+  const [
+    suppliersSnapshot,
+    kotSnapshot,
+    attendanceSnapshot,
+    recentAttendanceSnapshot,
+    recentPayoutsSnapshot,
+    lastMonthKotAggregate,
+    advancesSnapshot
+  ] = await Promise.all([
+    db.collection('suppliers').get(),
+    db.collection('kot_bills').where('date', '>=', minDate(monthStart, weekStart)).get(),
+    db.collection('attendance').where('date', '>=', monthStart).get(),
+    db.collection('attendance').orderBy('date', 'desc').limit(5).get(),
+    db.collection('salary_payouts').orderBy('payment_date', 'desc').limit(5).get(),
+    // Aggregations are billed at 1 read per 1,000 documents
+    db.collection('kot_bills')
+      .where('date', '>=', `${prevMonthPrefix}-01`)
+      .where('date', '<', monthStart)
+      .aggregate({ total: AggregateField.sum('amount') })
+      .get(),
+    db.collection('advances').where('status', '==', 'pending').get()
+  ]);
+
   const suppliers = suppliersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-  const kotSnapshot = await db.collection('kot_bills').get();
   const allKots = kotSnapshot.docs.map(doc => doc.data());
-
-  const attendanceSnapshot = await db.collection('attendance').get();
   const allAttendance = attendanceSnapshot.docs.map(doc => doc.data());
-
-  const payoutsSnapshot = await db.collection('salary_payouts').get();
-  const allPayouts = payoutsSnapshot.docs.map(doc => doc.data());
 
   // 1. Today's KOT volume
   const todayKots = allKots.filter(k => k.date === today);
@@ -1563,7 +1618,10 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
   });
 
   // 10. Unified Live System Activity Log
-  const recentKotsData = [...allKots];
+  // Fewer than 5 bills this month/week means older bills may belong in the list
+  const recentKotsData = allKots.length >= 5
+    ? [...allKots]
+    : (await db.collection('kot_bills').orderBy('date', 'desc').limit(5).get()).docs.map(doc => doc.data());
   recentKotsData.sort((a, b) => {
     const dateCompare = b.date.localeCompare(a.date);
     if (dateCompare !== 0) return dateCompare;
@@ -1571,13 +1629,8 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
   });
   const recentKotsSlice = recentKotsData.slice(0, 5);
 
-  const recentAttendanceData = [...allAttendance];
-  recentAttendanceData.sort((a, b) => b.date.localeCompare(a.date));
-  const recentAttendanceSlice = recentAttendanceData.slice(0, 5);
-
-  const recentPayoutsData = [...allPayouts];
-  recentPayoutsData.sort((a, b) => b.payment_date.localeCompare(a.payment_date));
-  const recentPayoutsSlice = recentPayoutsData.slice(0, 5);
+  const recentAttendanceSlice = recentAttendanceSnapshot.docs.map(doc => doc.data());
+  const recentPayoutsSlice = recentPayoutsSnapshot.docs.map(doc => doc.data());
 
   const activities = [];
 
@@ -1628,28 +1681,11 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
     };
   });
 
-  // Calculate unpaid KOT balance (KOT bills not covered by any payouts)
-  let totalUnpaidKots = 0;
-  allKots.forEach(kot => {
-    const supplierPayouts = allPayouts.filter(p => p.supplier_id?.toString() === kot.supplier_id?.toString());
-    const isPaid = supplierPayouts.some(p => p.start_date <= kot.date && p.end_date >= kot.date);
-    if (!isPaid) {
-      totalUnpaidKots += (kot.amount || 0);
-    }
-  });
-
   // Calculate total outstanding pending advances
-  const advancesSnapshot = await db.collection('advances').where('status', '==', 'pending').get();
   const totalPendingAdvances = advancesSnapshot.docs.reduce((sum, doc) => sum + (doc.data().amount || 0), 0);
 
-  // Calculate Last Month's KOT volume
-  const prevMonthDate = new Date(today);
-  prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
-  const prevMonthYear = prevMonthDate.getFullYear();
-  const prevMonthVal = String(prevMonthDate.getMonth() + 1).padStart(2, '0');
-  const prevMonthPrefix = `${prevMonthYear}-${prevMonthVal}`;
-  const lastMonthKots = allKots.filter(k => k.date && k.date.startsWith(prevMonthPrefix));
-  const lastMonthKotTotal = lastMonthKots.reduce((sum, k) => sum + (k.amount || 0), 0);
+  // Last Month's KOT volume
+  const lastMonthKotTotal = lastMonthKotAggregate.data().total || 0;
 
   res.json({
     today_date: today,
@@ -1666,7 +1702,6 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
     recent_activities: activities.slice(0, 6),
     recent_kots: dashboardKotsTable,
     total_pending_advances: totalPendingAdvances,
-    total_unpaid_kots: totalUnpaidKots,
     mtd_commission: estimatedMtdCommission,
     last_month_kot_total: lastMonthKotTotal
   });

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Users, UserPlus, Edit2, Trash2, Phone, DollarSign, Calendar, Calculator, History, Printer, RefreshCw, ArrowLeft, CheckCircle, Sliders, LogOut } from 'lucide-react';
+import { tempId, isTempId } from '../optimistic';
 
 export default function MonthlyWorkers({ showToast, API_BASE }) {
   const [activeTab, setActiveTab] = useState('directory'); // 'directory', 'calculate', 'history'
@@ -125,31 +126,43 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
       basic_daily_wage: parseFloat(formWage) || 0
     };
 
+    const isEdit = editMode;
+    const editId = editingWorkerId;
+    if (isEdit && isTempId(editId)) {
+      showToast('Still saving this worker, try again in a moment', 'error');
+      return;
+    }
+    const newId = tempId();
+
+    // Update the screen immediately; the server request runs in the background
+    if (isEdit) {
+      setWorkers(prev => prev.map(w => w.id === editId ? { ...w, ...payload } : w));
+      if (selectedWorker && selectedWorker.id === editId) {
+        setSelectedWorker({ ...selectedWorker, ...payload });
+      }
+    } else {
+      setWorkers(prev => [...prev, { id: newId, ...payload }]);
+    }
+    setShowModal(false);
+    showToast(isEdit ? 'Worker profile updated' : 'Monthly worker added', 'success');
+
     try {
-      setLoading(true);
-      const url = editMode ? `${API_BASE}/suppliers/${editingWorkerId}` : `${API_BASE}/suppliers`;
-      const method = editMode ? 'PUT' : 'POST';
-      
-      const res = await fetch(url, {
-        method,
+      const res = await fetch(isEdit ? `${API_BASE}/suppliers/${editId}` : `${API_BASE}/suppliers`, {
+        method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      
+
       if (!res.ok) throw new Error('Failed to save monthly worker profile');
-      const saved = await res.json();
-      
-      showToast(editMode ? 'Worker profile updated' : 'Monthly worker added', 'success');
-      setShowModal(false);
-      fetchWorkers();
-      if (selectedWorker && selectedWorker.id === editingWorkerId) {
-        setSelectedWorker(saved);
+
+      if (!isEdit) {
+        const saved = await res.json();
+        setWorkers(prev => prev.map(w => w.id === newId ? saved : w));
       }
     } catch (err) {
       console.error(err);
-      showToast(err.message, 'error');
-    } finally {
-      setLoading(false);
+      showToast(`Worker was not saved: ${err.message}`, 'error');
+      fetchWorkers();
     }
   };
 
@@ -157,18 +170,23 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
     if (!window.confirm('Are you sure you want to remove this monthly worker? Their active profile will be removed, but all historical attendance, advances, and payout logs will be preserved.')) {
       return;
     }
+    if (isTempId(id)) {
+      showToast('Still saving this worker, try again in a moment', 'error');
+      return;
+    }
+
+    // Remove from the screen immediately; reload from the server only if the delete fails
+    setWorkers(prev => prev.filter(w => w.id !== id));
+    setSelectedWorker(null);
+    showToast('Worker removed successfully', 'success');
+
     try {
-      setLoading(true);
       const res = await fetch(`${API_BASE}/suppliers/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete worker');
-      showToast('Worker removed successfully', 'success');
-      setSelectedWorker(null);
-      fetchWorkers();
     } catch (err) {
       console.error(err);
-      showToast('Error removing worker', 'error');
-    } finally {
-      setLoading(false);
+      showToast('Worker could not be removed and has been restored', 'error');
+      fetchWorkers();
     }
   };
 
@@ -183,40 +201,59 @@ export default function MonthlyWorkers({ showToast, API_BASE }) {
       showToast('Please enter advance amount', 'error');
       return;
     }
+    const worker = selectedWorker;
+    const newId = tempId();
+    const advance = {
+      supplier_id: worker.id,
+      amount: parseFloat(advanceAmount),
+      date: advanceDate,
+      remarks: advanceRemarks
+    };
+
+    // Show the advance immediately; the server request runs in the background
+    setPendingAdvances(prev => [{ id: newId, ...advance, status: 'pending', supplier_name: worker.name }, ...prev]
+      .sort((a, b) => b.date.localeCompare(a.date)));
+    setAdvanceAmount('');
+    setAdvanceRemarks('');
+    setShowAdvanceModal(false);
+    showToast('Cash advance logged successfully', 'success');
+
     try {
       const res = await fetch(`${API_BASE}/advances`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          supplier_id: selectedWorker.id,
-          amount: parseFloat(advanceAmount),
-          date: advanceDate,
-          remarks: advanceRemarks
-        })
+        body: JSON.stringify(advance)
       });
       if (!res.ok) throw new Error('Failed to log cash advance');
-      
-      showToast('Cash advance logged successfully', 'success');
-      setAdvanceAmount('');
-      setAdvanceRemarks('');
-      setShowAdvanceModal(false);
-      fetchAdvances(selectedWorker.id);
+
+      const saved = await res.json();
+      setPendingAdvances(prev => prev.map(a => a.id === newId ? saved : a));
     } catch (err) {
       console.error(err);
-      showToast(err.message, 'error');
+      showToast(`Cash advance was not saved: ${err.message}`, 'error');
+      fetchAdvances(worker.id);
     }
   };
 
   const handleDeleteAdvance = async (advId) => {
     if (!window.confirm('Delete this pending advance log?')) return;
+    if (isTempId(advId)) {
+      showToast('Still saving this advance, try again in a moment', 'error');
+      return;
+    }
+
+    // Remove from the screen immediately; reload only if the delete fails
+    const worker = selectedWorker;
+    setPendingAdvances(prev => prev.filter(a => a.id !== advId));
+    showToast('Advance log deleted', 'success');
+
     try {
       const res = await fetch(`${API_BASE}/advances/${advId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete advance');
-      showToast('Advance log deleted', 'success');
-      fetchAdvances(selectedWorker.id);
     } catch (err) {
       console.error(err);
-      showToast('Error deleting advance', 'error');
+      showToast('Advance could not be deleted and has been restored', 'error');
+      fetchAdvances(worker.id);
     }
   };
 

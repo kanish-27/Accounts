@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Users, UserPlus, Edit2, Trash2, Phone, DollarSign, Calendar, Calculator, History, Printer, RefreshCw, ArrowLeft, CheckCircle, Sliders } from 'lucide-react';
+import { tempId, isTempId } from '../optimistic';
 
 export default function Cleaners({ showToast, API_BASE }) {
   const [activeTab, setActiveTab] = useState('directory'); // 'directory', 'calculate', 'history'
+  const [roleView, setRoleView] = useState('masters'); // 'masters' or 'cleaners'
   
   // Directory state
   const [cleaners, setCleaners] = useState([]);
@@ -95,7 +97,7 @@ export default function Cleaners({ showToast, API_BASE }) {
     setFormWage('');
     setFormJoinDate(new Date().toISOString().split('T')[0]);
     setFormStatus('active');
-    setFormDesignation('');
+    setFormDesignation(roleView === 'masters' ? 'Master' : 'Cleaner');
     setShowModal(true);
   };
 
@@ -129,31 +131,43 @@ export default function Cleaners({ showToast, API_BASE }) {
       designation: formDesignation
     };
 
+    const isEdit = editMode;
+    const editId = editingCleanerId;
+    if (isEdit && isTempId(editId)) {
+      showToast('Still saving this worker, try again in a moment', 'error');
+      return;
+    }
+    const newId = tempId();
+
+    // Update the screen immediately; the server request runs in the background
+    if (isEdit) {
+      setCleaners(prev => prev.map(c => c.id === editId ? { ...c, ...payload } : c));
+      if (selectedCleaner && selectedCleaner.id === editId) {
+        setSelectedCleaner({ ...selectedCleaner, ...payload });
+      }
+    } else {
+      setCleaners(prev => [...prev, { id: newId, ...payload }]);
+    }
+    setShowModal(false);
+    showToast(isEdit ? 'Worker profile updated' : 'Worker added', 'success');
+
     try {
-      setLoading(true);
-      const url = editMode ? `${API_BASE}/suppliers/${editingCleanerId}` : `${API_BASE}/suppliers`;
-      const method = editMode ? 'PUT' : 'POST';
-      
-      const res = await fetch(url, {
-        method,
+      const res = await fetch(isEdit ? `${API_BASE}/suppliers/${editId}` : `${API_BASE}/suppliers`, {
+        method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      
+
       if (!res.ok) throw new Error('Failed to save cleaner profile');
-      const saved = await res.json();
-      
-      showToast(editMode ? 'Worker profile updated' : 'Worker added', 'success');
-      setShowModal(false);
-      fetchCleaners();
-      if (selectedCleaner && selectedCleaner.id === editingCleanerId) {
-        setSelectedCleaner(saved);
+
+      if (!isEdit) {
+        const saved = await res.json();
+        setCleaners(prev => prev.map(c => c.id === newId ? saved : c));
       }
     } catch (err) {
       console.error(err);
-      showToast(err.message, 'error');
-    } finally {
-      setLoading(false);
+      showToast(`Worker was not saved: ${err.message}`, 'error');
+      fetchCleaners();
     }
   };
 
@@ -161,19 +175,23 @@ export default function Cleaners({ showToast, API_BASE }) {
     if (!window.confirm('Are you sure you want to remove this worker? Their active profile will be removed, but all historical attendance, advances, and payout logs will be preserved.')) {
       return;
     }
+    if (isTempId(id)) {
+      showToast('Still saving this worker, try again in a moment', 'error');
+      return;
+    }
+
+    // Remove from the screen immediately; reload from the server only if the delete fails
+    setCleaners(prev => prev.filter(c => c.id !== id));
+    setSelectedCleaner(null);
+    showToast('Worker removed successfully', 'success');
 
     try {
-      setLoading(true);
       const res = await fetch(`${API_BASE}/suppliers/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete worker');
-      showToast('Worker removed successfully', 'success');
-      setSelectedCleaner(null);
-      fetchCleaners();
     } catch (err) {
       console.error(err);
-      showToast('Error removing cleaner profile', 'error');
-    } finally {
-      setLoading(false);
+      showToast('Worker could not be removed and has been restored', 'error');
+      fetchCleaners();
     }
   };
 
@@ -185,45 +203,60 @@ export default function Cleaners({ showToast, API_BASE }) {
       return;
     }
 
+    const cleaner = selectedCleaner;
+    const newId = tempId();
     const payload = {
-      supplier_id: selectedCleaner.id,
+      supplier_id: cleaner.id,
       amount: parseFloat(advanceAmount),
       date: advanceDate,
       remarks: advanceRemarks.trim(),
       status: 'pending'
     };
 
+    // Show the advance immediately; the server request runs in the background
+    setPendingAdvances(prev => [{ id: newId, ...payload, supplier_name: cleaner.name }, ...prev]
+      .sort((a, b) => b.date.localeCompare(a.date)));
+    showToast(`Logged ₹${payload.amount.toLocaleString('en-IN')} cash advance`, 'success');
+    setShowAdvanceModal(false);
+    setAdvanceAmount('');
+    setAdvanceRemarks('');
+
     try {
-      setLoading(true);
       const res = await fetch(`${API_BASE}/advances`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       if (!res.ok) throw new Error('Failed to log cash advance');
-      showToast(`Logged ₹${parseFloat(advanceAmount).toLocaleString('en-IN')} cash advance`, 'success');
-      setShowAdvanceModal(false);
-      setAdvanceAmount('');
-      setAdvanceRemarks('');
-      fetchAdvances(selectedCleaner.id);
+
+      const saved = await res.json();
+      setPendingAdvances(prev => prev.map(a => a.id === newId ? saved : a));
     } catch (err) {
       console.error(err);
-      showToast('Error recording cash advance', 'error');
-    } finally {
-      setLoading(false);
+      showToast('Cash advance was not saved', 'error');
+      fetchAdvances(cleaner.id);
     }
   };
 
   const handleDeleteAdvance = async (advId) => {
     if (!window.confirm('Are you sure you want to delete this pending cash advance?')) return;
+    if (isTempId(advId)) {
+      showToast('Still saving this advance, try again in a moment', 'error');
+      return;
+    }
+
+    // Remove from the screen immediately; reload only if the delete fails
+    const cleaner = selectedCleaner;
+    setPendingAdvances(prev => prev.filter(a => a.id !== advId));
+    showToast('Cash advance deleted', 'success');
+
     try {
       const res = await fetch(`${API_BASE}/advances/${advId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete advance');
-      showToast('Cash advance deleted', 'success');
-      fetchAdvances(selectedCleaner.id);
     } catch (err) {
       console.error(err);
-      showToast('Failed to delete advance', 'error');
+      showToast('Cash advance could not be deleted and has been restored', 'error');
+      fetchAdvances(cleaner.id);
     }
   };
 
@@ -264,7 +297,7 @@ export default function Cleaners({ showToast, API_BASE }) {
 
   const handleProcessPayout = async (record = null) => {
     const isSingle = record !== null;
-    const targetRecords = isSingle ? [record] : report.filter(r => !r.already_paid);
+    const targetRecords = isSingle ? [record] : roleReport.filter(r => !r.already_paid);
 
     if (targetRecords.length === 0) {
       showToast(isSingle ? 'Worker already paid' : 'No unpaid workers in this period', 'error');
@@ -341,10 +374,17 @@ export default function Cleaners({ showToast, API_BASE }) {
     return '₹' + (parseFloat(val) || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   };
 
-  const filteredCleanersList = cleaners.filter(c => 
+  // Masters and cleaners share type 'cleaner'; a designation containing "master" marks a master
+  const isMasterRole = (w) => (w.designation || '').toLowerCase().includes('master');
+  const inRoleView = (w) => isMasterRole(w) === (roleView === 'masters');
+  const roleLabel = roleView === 'masters' ? 'Master' : 'Cleaner';
+
+  const filteredCleanersList = cleaners.filter(c => inRoleView(c) && (
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (c.phone || '').includes(searchQuery)
-  );
+  ));
+  const roleReport = report.filter(inRoleView);
+  const roleHistory = payoutHistory.filter(inRoleView);
 
   return (
     <div className="tab-view-container">
@@ -378,6 +418,29 @@ export default function Cleaners({ showToast, API_BASE }) {
             <History size={14} /> Payout History
           </button>
         </div>
+      </div>
+
+      {/* Masters / Cleaners switch */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-color)' }}>
+        {[['masters', 'Masters'], ['cleaners', 'Cleaners']].map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => { setRoleView(key); setSelectedCleaner(null); }}
+            className="btn btn-sm"
+            style={{
+              border: 'none',
+              borderRadius: 0,
+              background: 'transparent',
+              padding: '0.6rem 1.1rem',
+              fontWeight: 600,
+              color: roleView === key ? 'var(--accent-gold-glow)' : 'var(--text-secondary)',
+              borderBottom: roleView === key ? '2px solid var(--accent-gold-glow)' : '2px solid transparent',
+              marginBottom: '-1px'
+            }}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* ==================== TAB: DIRECTORY ==================== */}
@@ -571,14 +634,14 @@ export default function Cleaners({ showToast, API_BASE }) {
             <div className="filter-bar">
               <input 
                 type="text" 
-                placeholder="Search daily workers by name or phone..." 
+                placeholder={`Search ${roleView} by name or phone...`} 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="form-control"
                 style={{ maxWidth: '350px' }}
               />
               <button onClick={openAddModal} className="btn btn-primary">
-                <UserPlus size={18} /> Add Daily Master
+                <UserPlus size={18} /> Add {roleLabel}
               </button>
             </div>
 
@@ -588,8 +651,8 @@ export default function Cleaners({ showToast, API_BASE }) {
               </div>
             ) : filteredCleanersList.length === 0 ? (
               <div className="glass-panel" style={{ textAlign: 'center', padding: '4rem' }}>
-                <h3>No daily workers found</h3>
-                <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Add a new daily wage worker profile to get started.</p>
+                <h3>No {roleView} found</h3>
+                <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Add a new {roleLabel.toLowerCase()} profile to get started.</p>
               </div>
             ) : (
               <div className="table-wrapper">
@@ -681,25 +744,25 @@ export default function Cleaners({ showToast, API_BASE }) {
 
               <button 
                 onClick={() => handleProcessPayout(null)} 
-                className={report.length > 0 && report.every(r => r.already_paid) ? "btn btn-secondary" : "btn btn-success"} 
+                className={roleReport.length > 0 && roleReport.every(r => r.already_paid) ? "btn btn-secondary" : "btn btn-success"} 
                 style={{ alignSelf: 'flex-end' }}
-                disabled={payrollLoading || report.length === 0 || report.every(r => r.already_paid)}
+                disabled={payrollLoading || roleReport.length === 0 || roleReport.every(r => r.already_paid)}
               >
-                <CheckCircle size={18} /> {report.length > 0 && report.every(r => r.already_paid) ? "All Paid for Period" : "Disburse & Record Payouts"}
+                <CheckCircle size={18} /> {roleReport.length > 0 && roleReport.every(r => r.already_paid) ? "All Paid for Period" : "Disburse & Record Payouts"}
               </button>
             </div>
           </div>
 
-          {report.length === 0 ? (
+          {roleReport.length === 0 ? (
             <div className="glass-panel" style={{ textAlign: 'center', padding: '3rem' }}>
-              No cleaner salary data available for this range. Select another date range.
+              No {roleLabel.toLowerCase()} salary data available for this range. Select another date range.
             </div>
           ) : (
             <div className="table-wrapper">
               <table className="custom-table">
                 <thead>
                   <tr>
-                    <th>Cleaner</th>
+                    <th>{roleLabel}</th>
                     <th>Attendance Days</th>
                     <th>Daily Wage</th>
                     <th>Attendance Pay</th>
@@ -709,7 +772,7 @@ export default function Cleaners({ showToast, API_BASE }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {report.map((row) => (
+                  {roleReport.map((row) => (
                     <tr key={row.supplier_id}>
                       <td>
                         <div style={{ fontWeight: 600 }}>{row.supplier_name}</div>
@@ -768,13 +831,13 @@ export default function Cleaners({ showToast, API_BASE }) {
       {/* ==================== TAB: HISTORY ==================== */}
       {activeTab === 'history' && (
         <div>
-          {payrollLoading && payoutHistory.length === 0 ? (
+          {payrollLoading && roleHistory.length === 0 ? (
             <div className="glass-panel" style={{ textAlign: 'center', padding: '3rem' }}>
-              Loading cleaner payout history...
+              Loading {roleLabel.toLowerCase()} payout history...
             </div>
-          ) : payoutHistory.length === 0 ? (
+          ) : roleHistory.length === 0 ? (
             <div className="glass-panel" style={{ textAlign: 'center', padding: '3rem' }}>
-              No cleaner payout records logged yet.
+              No {roleLabel.toLowerCase()} payout records logged yet.
             </div>
           ) : (
             <div className="table-wrapper">
@@ -793,7 +856,7 @@ export default function Cleaners({ showToast, API_BASE }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {payoutHistory.map((payout) => (
+                  {roleHistory.map((payout) => (
                     <tr key={payout.id}>
                       <td><code style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>#{payout.id.substring(0, 8)}</code></td>
                       <td>{payout.payment_date}</td>
@@ -830,7 +893,7 @@ export default function Cleaners({ showToast, API_BASE }) {
       {showModal && (
         <div className="modal-overlay">
           <div className="glass-panel modal-content animate-scale-up" style={{ maxWidth: '450px', width: '100%', padding: '1.75rem' }}>
-            <h2>{editMode ? 'Edit Daily Master Profile' : 'Add Daily Master Profile'}</h2>
+            <h2>{editMode ? `Edit ${roleLabel} Profile` : `Add ${roleLabel} Profile`}</h2>
             <form onSubmit={handleSubmit} style={{ marginTop: '1.25rem' }}>
               <div className="form-group">
                 <label>Full Name *</label>

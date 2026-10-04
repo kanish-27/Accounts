@@ -428,14 +428,17 @@ export default function KotBills({ showToast, API_BASE }) {
       return;
     }
 
+    // Remove from the screen immediately; reload only if the delete fails
+    setBills(prev => prev.filter(b => b.id !== id));
+    showToast(`KOT Bill ${billNo} deleted`, 'success');
+
     try {
       const res = await fetch(`${API_BASE}/kot/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete KOT bill');
-      showToast(`KOT Bill ${billNo} deleted`, 'success');
-      fetchBills();
     } catch (err) {
       console.error(err);
-      showToast('Error deleting KOT bill', 'error');
+      showToast(`KOT Bill ${billNo} could not be deleted and has been restored`, 'error');
+      fetchBills();
     }
   };
 

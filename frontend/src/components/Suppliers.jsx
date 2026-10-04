@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Users, Plus, Edit2, Trash2, Phone, Calendar, ArrowLeft, UserPlus, DollarSign } from 'lucide-react';
+import { tempId, isTempId } from '../optimistic';
 
 export default function Suppliers({ showToast, API_BASE, settings }) {
   const todayStr = new Date().toISOString().split('T')[0];
@@ -92,38 +93,46 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
       status: formStatus
     };
 
-    try {
-      let res;
-      if (editMode) {
-        res = await fetch(`${API_BASE}/suppliers/${currentId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-      } else {
-        res = await fetch(`${API_BASE}/suppliers`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
+    const isEdit = editMode;
+    const editId = currentId;
+    if (isEdit && isTempId(editId)) {
+      showToast('Still saving this supplier, try again in a moment', 'error');
+      return;
+    }
+    const newId = tempId();
+
+    // Update the screen immediately; the server request runs in the background
+    if (isEdit) {
+      setSuppliers(prev => prev.map(s => s.id === editId ? { ...s, ...payload } : s));
+      if (selectedSupplier && selectedSupplier.id === editId) {
+        setSelectedSupplier({ ...selectedSupplier, ...payload });
       }
+    } else {
+      setSuppliers(prev => [...prev, { id: newId, type: 'supplier', ...payload }]);
+    }
+    setShowModal(false);
+    showToast(`Supplier ${isEdit ? 'updated' : 'added'} successfully`, 'success');
+
+    try {
+      const res = await fetch(isEdit ? `${API_BASE}/suppliers/${editId}` : `${API_BASE}/suppliers`, {
+        method: isEdit ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || 'Operation failed');
       }
 
-      showToast(`Supplier ${editMode ? 'updated' : 'added'} successfully`, 'success');
-      setShowModal(false);
-      fetchSuppliers();
-      
-      // If we are editing the selected supplier in detail view, refresh it too
-      if (selectedSupplier && selectedSupplier.id === currentId) {
-        setSelectedSupplier({ ...selectedSupplier, ...payload });
+      if (!isEdit) {
+        const saved = await res.json();
+        setSuppliers(prev => prev.map(s => s.id === newId ? saved : s));
       }
     } catch (error) {
       console.error(error);
-      showToast(error.message, 'error');
+      showToast(`Supplier was not saved: ${error.message}`, 'error');
+      fetchSuppliers();
     }
   };
 
@@ -131,18 +140,25 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
     if (!window.confirm('Are you sure you want to delete this supplier? Their active record will be removed, but all historical KOT bills and logs will be preserved.')) {
       return;
     }
+    if (isTempId(id)) {
+      showToast('Still saving this supplier, try again in a moment', 'error');
+      return;
+    }
+
+    // Remove from the screen immediately; reload from the server only if the delete fails
+    setSuppliers(prev => prev.filter(s => s.id !== id));
+    if (selectedSupplier && selectedSupplier.id === id) {
+      setSelectedSupplier(null);
+    }
+    showToast('Supplier deleted successfully', 'success');
 
     try {
       const res = await fetch(`${API_BASE}/suppliers/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete supplier');
-      showToast('Supplier deleted successfully', 'success');
-      fetchSuppliers();
-      if (selectedSupplier && selectedSupplier.id === id) {
-        setSelectedSupplier(null);
-      }
     } catch (error) {
       console.error(error);
-      showToast('Error deleting supplier', 'error');
+      showToast('Supplier could not be deleted and has been restored', 'error');
+      fetchSuppliers();
     }
   };
 
@@ -189,16 +205,31 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
       return;
     }
 
+    const supplier = selectedSupplier;
+    const newId = tempId();
+    const advance = {
+      supplier_id: supplier.id,
+      amount: parseFloat(advanceAmount),
+      date: advanceDate,
+      remarks: advanceRemarks
+    };
+
+    // Show the advance immediately; the server request runs in the background
+    setSupplierActivity(prev => ({
+      ...prev,
+      advances: [{ id: newId, ...advance, status: 'pending', supplier_name: supplier.name }, ...(prev.advances || [])]
+        .sort((a, b) => b.date.localeCompare(a.date))
+    }));
+    setShowAdvanceModal(false);
+    setAdvanceAmount('');
+    setAdvanceRemarks('');
+    showToast('Cash advance logged successfully', 'success');
+
     try {
       const res = await fetch(`${API_BASE}/advances`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          supplier_id: selectedSupplier.id,
-          amount: parseFloat(advanceAmount),
-          date: advanceDate,
-          remarks: advanceRemarks
-        })
+        body: JSON.stringify(advance)
       });
 
       if (!res.ok) {
@@ -206,16 +237,15 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
         throw new Error(err.error || 'Failed to log cash advance');
       }
 
-      showToast('Cash advance logged successfully', 'success');
-      setShowAdvanceModal(false);
-      setAdvanceAmount('');
-      setAdvanceRemarks('');
-      
-      // Refresh supplier activity to show the new advance
-      viewProfile(selectedSupplier);
+      const saved = await res.json();
+      setSupplierActivity(prev => ({
+        ...prev,
+        advances: (prev.advances || []).map(a => a.id === newId ? saved : a)
+      }));
     } catch (error) {
       console.error(error);
-      showToast(error.message, 'error');
+      showToast(`Cash advance was not saved: ${error.message}`, 'error');
+      viewProfile(supplier);
     }
   };
 
@@ -223,6 +253,18 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
     if (!window.confirm('Are you sure you want to delete this cash advance record?')) {
       return;
     }
+    if (isTempId(id)) {
+      showToast('Still saving this advance, try again in a moment', 'error');
+      return;
+    }
+
+    // Remove from the screen immediately; reload only if the delete fails
+    const supplier = selectedSupplier;
+    setSupplierActivity(prev => ({
+      ...prev,
+      advances: (prev.advances || []).filter(a => a.id !== id)
+    }));
+    showToast('Cash advance deleted successfully', 'success');
 
     try {
       const res = await fetch(`${API_BASE}/advances/${id}`, {
@@ -233,12 +275,10 @@ export default function Suppliers({ showToast, API_BASE, settings }) {
         const err = await res.json();
         throw new Error(err.error || 'Failed to delete advance');
       }
-
-      showToast('Cash advance deleted successfully', 'success');
-      viewProfile(selectedSupplier);
     } catch (error) {
       console.error(error);
-      showToast(error.message, 'error');
+      showToast(`Cash advance could not be deleted: ${error.message}`, 'error');
+      viewProfile(supplier);
     }
   };
 

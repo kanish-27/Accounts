@@ -1,12 +1,12 @@
 /* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
 import { useState, useEffect } from 'react';
 import { Search, Trash2, Calendar, DollarSign, Plus, RefreshCw, Users } from 'lucide-react';
+import { tempId, isTempId } from '../optimistic';
 
 export default function AdvancesLog({ showToast, API_BASE }) {
   const [advances, setAdvances] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
 
   // Filters State
   const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]); // Default to today
@@ -131,20 +131,27 @@ export default function AdvancesLog({ showToast, API_BASE }) {
       return;
     }
 
+    if (isTempId(id)) {
+      showToast('Still saving this advance, try again in a moment', 'error');
+      return;
+    }
+
+    // Remove from the screen immediately; reload only if the delete fails
+    setAdvances(prev => prev.filter(a => a.id !== id));
+    showToast('Advance record deleted successfully', 'success');
+
     try {
       const res = await fetch(`${API_BASE}/advances/${id}`, {
         method: 'DELETE'
       });
-      const data = await res.json();
-      if (res.ok) {
-        showToast('Advance record deleted successfully', 'success');
-        fetchData();
-      } else {
-        showToast(data.error || 'Failed to delete advance', 'error');
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to delete advance');
       }
     } catch (err) {
       console.error(err);
-      showToast('Connection error during deletion', 'error');
+      showToast(`Advance could not be deleted and has been restored: ${err.message}`, 'error');
+      fetchData();
     }
   };
 
@@ -161,38 +168,40 @@ export default function AdvancesLog({ showToast, API_BASE }) {
       return;
     }
 
+    const newId = tempId();
+    const advance = {
+      supplier_id: logSupplierId,
+      amount: parsedAmount,
+      date: logDate,
+      remarks: logRemarks
+    };
+    const supplierName = suppliers.find(s => s.id?.toString() === logSupplierId.toString())?.name || 'Unknown';
+
+    // Show the advance immediately; the server request runs in the background
+    setAdvances(prev => [{ id: newId, ...advance, status: 'pending', supplier_name: supplierName }, ...prev]
+      .sort((a, b) => b.date.localeCompare(a.date)));
+    showToast(`Logged advance of ${formatCurrency(parsedAmount)} successfully`, 'success');
+    setShowLogModal(false);
+    // Clear modal form states
+    setLogSupplierId('');
+    setLogAmount('');
+    setLogDate(new Date().toISOString().split('T')[0]);
+    setLogRemarks('');
+
     try {
-      setSubmitting(true);
       const res = await fetch(`${API_BASE}/advances`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          supplier_id: logSupplierId,
-          amount: parsedAmount,
-          date: logDate,
-          remarks: logRemarks
-        })
+        body: JSON.stringify(advance)
       });
 
       const data = await res.json();
-      if (res.ok) {
-        showToast(`Logged advance of ${formatCurrency(parsedAmount)} successfully`, 'success');
-        setShowLogModal(false);
-        // Clear modal form states
-        setLogSupplierId('');
-        setLogAmount('');
-        setLogDate(new Date().toISOString().split('T')[0]);
-        setLogRemarks('');
-        // Sync data
-        fetchData();
-      } else {
-        showToast(data.error || 'Failed to log advance', 'error');
-      }
+      if (!res.ok) throw new Error(data.error || 'Failed to log advance');
+      setAdvances(prev => prev.map(a => a.id === newId ? data : a));
     } catch (err) {
       console.error(err);
-      showToast('Error connecting to backend server', 'error');
-    } finally {
-      setSubmitting(false);
+      showToast(`Advance was not saved: ${err.message}`, 'error');
+      fetchData();
     }
   };
 
@@ -471,16 +480,14 @@ export default function AdvancesLog({ showToast, API_BASE }) {
                   type="button" 
                   onClick={() => setShowLogModal(false)} 
                   className="btn btn-secondary"
-                  disabled={submitting}
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit" 
                   className="btn btn-primary"
-                  disabled={submitting}
                 >
-                  {submitting ? 'Logging...' : 'Log Advance'}
+                  Log Advance
                 </button>
               </div>
             </form>

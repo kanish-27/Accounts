@@ -115,17 +115,20 @@ export default function Attendance({ showToast, API_BASE }) {
   };
 
   const handleSave = async () => {
-    try {
-      setLoading(true);
-      const payload = {
-        date,
-        records: records.map(rec => ({
-          supplier_id: rec.supplier_id,
-          status: rec.status,
-          shift: rec.shift
-        }))
-      };
+    const savedDate = date;
+    const payload = {
+      date: savedDate,
+      records: records.map(rec => ({
+        supplier_id: rec.supplier_id,
+        status: rec.status,
+        shift: rec.shift
+      }))
+    };
 
+    // The sheet already shows these marks, so confirm immediately and save in the background
+    showToast(`Attendance for ${savedDate} saved successfully`, 'success');
+
+    try {
       const res = await fetch(`${API_BASE}/attendance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -133,13 +136,9 @@ export default function Attendance({ showToast, API_BASE }) {
       });
 
       if (!res.ok) throw new Error('Failed to save attendance');
-      showToast(`Attendance for ${date} saved successfully`, 'success');
-      fetchAttendance(date);
     } catch (error) {
       console.error(error);
-      showToast('Error saving attendance records', 'error');
-    } finally {
-      setLoading(false);
+      showToast(`Attendance for ${savedDate} was NOT saved. Please save again.`, 'error');
     }
   };
 
@@ -213,15 +212,12 @@ export default function Attendance({ showToast, API_BASE }) {
                       >
                         Present
                       </button>
-                      {/* Monthly workers are marked only Present or Absent */}
-                      {rec.type !== 'monthly' && (
-                        <button
-                          onClick={() => handleStatusChange(rec.supplier_id, 'Half Day')}
-                          className={`status-btn ${rec.status === 'Half Day' ? 'active half-day' : ''}`}
-                        >
-                          Half Day
-                        </button>
-                      )}
+                      <button
+                        onClick={() => handleStatusChange(rec.supplier_id, 'Half Day')}
+                        className={`status-btn ${rec.status === 'Half Day' ? 'active half-day' : ''}`}
+                      >
+                        Half Day
+                      </button>
                       <button
                         onClick={() => handleStatusChange(rec.supplier_id, 'Absent')}
                         className={`status-btn ${rec.status === 'Absent' ? 'active absent' : ''}`}

@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { AggregateField } from 'firebase-admin/firestore';
-import { initDb } from './db.js';
+import { initDb, getDb } from './db.js';
 
 const app = express();
 // Dev server port
@@ -16,8 +16,15 @@ try {
   db = await initDb();
   console.log('Firebase Firestore Database initialized successfully.');
 } catch (error) {
-  console.error('Failed to initialize database:', error);
-  process.exit(1);
+  // Quota exhaustion is temporary (resets daily), so start anyway: routes report
+  // the error until it resets, instead of the deploy failing outright.
+  if (error.code === 8) {
+    console.warn('Firestore quota exceeded during startup seeding; starting server anyway.');
+    db = getDb();
+  } else {
+    console.error('Failed to initialize database:', error);
+    process.exit(1);
+  }
 }
 
 // Helper to wrap async route handlers

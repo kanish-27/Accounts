@@ -3,7 +3,7 @@ import { Wine, Plus, Search, Filter, Trash2, Calendar, User, DollarSign, Upload,
 
 // Products that never count towards a supplier's KOT amount
 const EXCLUDED_KOT_ITEMS = [
-  'Tumbler', 'Peanut Masala', 'Kara Sev', 'Pori', 'Mixture',
+  'Tumbler', 'Kara Sev', 'Pori', 'Mixture',
   'British 300 Ml', 'British 500 Ml',
   'Rich Aqua 500 Ml', 'Rich Aqua 300 Ml',
   'Aquafina 500 Ml', 'Aquafina 300 Ml',

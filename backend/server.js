@@ -1485,12 +1485,18 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
     db.collection('attendance').where('date', '>=', monthStart).get(),
     db.collection('attendance').orderBy('date', 'desc').limit(5).get(),
     db.collection('salary_payouts').orderBy('payment_date', 'desc').limit(5).get(),
-    // Aggregations are billed at 1 read per 1,000 documents
+    // Aggregations are billed at 1 read per 1,000 documents.
+    // Needs a composite index on kot_bills (date ASC, amount ASC); if it is
+    // missing, show 0 for this figure instead of failing the whole dashboard.
     db.collection('kot_bills')
       .where('date', '>=', `${prevMonthPrefix}-01`)
       .where('date', '<', monthStart)
       .aggregate({ total: AggregateField.sum('amount') })
-      .get(),
+      .get()
+      .catch(err => {
+        console.error('Last month KOT total failed:', err.message);
+        return null;
+      }),
     db.collection('advances').where('status', '==', 'pending').get()
   ]);
 
@@ -1692,7 +1698,7 @@ app.get('/api/dashboard/stats', asyncHandler(async (req, res) => {
   const totalPendingAdvances = advancesSnapshot.docs.reduce((sum, doc) => sum + (doc.data().amount || 0), 0);
 
   // Last Month's KOT volume
-  const lastMonthKotTotal = lastMonthKotAggregate.data().total || 0;
+  const lastMonthKotTotal = lastMonthKotAggregate?.data().total || 0;
 
   res.json({
     today_date: today,

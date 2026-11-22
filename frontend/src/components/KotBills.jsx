@@ -11,15 +11,51 @@ const EXCLUDED_KOT_ITEMS = [
   'Masal Kallai', 'Varu Kallai'
 ];
 
-// Lowercase, drop any leading quantity numbers (e.g. "2 Tumbler", "1 x Pori"), then keep only letters/digits
+// Products that are conditionally excluded from KOT ONLY if that particular person is having charges.
+// If the person does NOT have charges, these two products alone are added to the KOT calculation.
+const CONDITIONAL_KOT_ITEMS = [
+  'Aquafina 1 L', 'Aquafina 1L', 'Aquafina 1 Ltr', 'Aquafina 1 Litre', 'Aquafina 1000 Ml',
+  'Water 1 L', 'Water 1L', 'Water 1 Ltr', 'Water 1 Litre', 'Water 1000 Ml'
+];
+
+// Available charges in the club: Kudil Charge, AC Charges
+const isChargeItemOrCategory = (category, itemName) => {
+  const cat = (category || '').toLowerCase();
+  const item = (itemName || '').toLowerCase();
+
+  // Match Kudil Charge / Kudil Charges / Kudil
+  if (cat.includes('kudil') || item.includes('kudil')) return true;
+
+  // Match AC Charges / AC Charge / A/C Charges / A/C Charge / A.C Charges
+  if (
+    cat.includes('ac charge') || item.includes('ac charge') ||
+    cat.includes('ac charges') || item.includes('ac charges') ||
+    cat.includes('a/c charge') || item.includes('a/c charge') ||
+    cat.includes('a/c charges') || item.includes('a/c charges') ||
+    cat.includes('a.c charge') || item.includes('a.c charge') ||
+    cat.includes('a.c charges') || item.includes('a.c charges') ||
+    cat.includes('ac_charge') || item.includes('ac_charge')
+  ) {
+    return true;
+  }
+
+  // General charge detection (e.g. Category 'Charges' or 'Charge')
+  if (cat.includes('charge') || item.includes('charge')) return true;
+
+  return false;
+};
+
+// Lowercase, drop any leading quantity numbers (e.g. "2 Tumbler", "1 x Pori", "2 Aquafina 1 L"), then keep only letters/digits
 const normalizeItemName = (name) => name
   .toLowerCase()
   .replace(/^(\s*[#(]?\d+(\.\d+)?[)]?\s*(x|×|\*|-|\.|:)?\s*)+/, '')
   .replace(/[^a-z0-9]/g, '');
 
 const EXCLUDED_KOT_ITEM_KEYS = new Set(EXCLUDED_KOT_ITEMS.map(normalizeItemName));
+const CONDITIONAL_KOT_ITEM_KEYS = new Set(CONDITIONAL_KOT_ITEMS.map(normalizeItemName));
 
 const isExcludedKotItem = (itemName) => !!itemName && EXCLUDED_KOT_ITEM_KEYS.has(normalizeItemName(itemName));
+const isConditionalKotItem = (itemName) => !!itemName && CONDITIONAL_KOT_ITEM_KEYS.has(normalizeItemName(itemName));
 
 export default function KotBills({ showToast, API_BASE }) {
   const [bills, setBills] = useState([]);
@@ -209,16 +245,60 @@ export default function KotBills({ showToast, API_BASE }) {
       return null;
     };
 
-    const isSupplierMatch = (assignTo, supplierName) => {
-      if (!assignTo || !supplierName) return false;
-      const clean = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-      return clean(assignTo) === clean(supplierName);
+    const isSupplierMatch = (assignTo, supplier) => {
+      if (!assignTo || !supplier) return false;
+      const clean = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const cleanAssign = clean(assignTo);
+      const cleanName = clean(supplier.name);
+      if (cleanAssign === cleanName) return true;
+      if (supplier.id && cleanAssign === clean(supplier.id.toString())) return true;
+      return false;
     };
 
     const findSupplier = (assignTo) => {
       if (!assignTo) return null;
-      return suppliers.find(s => isSupplierMatch(assignTo, s.name));
+      return suppliers.find(s => isSupplierMatch(assignTo, s));
     };
+
+    // First pass: identify which suppliers have charges (e.g. "Service Charge", "Packing Charges")
+    const suppliersWithCharges = new Set();
+    const suppliersWithChargesByDate = new Set();
+    const suppliersWithUndatedCharges = new Set();
+
+    for (let i = 1; i < lines.length; i++) {
+      const row = lines[i];
+      if (row.length === 1 && row[0] === '') continue;
+      if (row.length <= Math.max(categoryIndex, assignIndex, totalIndex)) continue;
+
+      const category = (row[categoryIndex] || '').trim();
+      const assignTo = (row[assignIndex] || '').trim();
+      const itemName = (row[itemIndex] || '').trim();
+      const dateStr = dateIndex !== -1 ? row[dateIndex] : '';
+      const rowDate = parseDateToYYYYMMDD(dateStr);
+
+      const isCharge = isChargeItemOrCategory(category, itemName);
+      if (isCharge && assignTo) {
+        const cleanAssign = assignTo.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const matched = findSupplier(assignTo);
+        const keys = new Set();
+        if (cleanAssign) keys.add(cleanAssign);
+        if (matched) {
+          keys.add(matched.id.toString());
+          if (matched.name) {
+            keys.add(matched.name.toLowerCase().replace(/[^a-z0-9]/g, ''));
+          }
+        }
+
+        keys.forEach(k => {
+          suppliersWithCharges.add(k);
+          if (rowDate) {
+            suppliersWithChargesByDate.add(`${k}_${rowDate}`);
+          } else {
+            suppliersWithUndatedCharges.add(k);
+          }
+        });
+      }
+    }
 
     for (let i = 1; i < lines.length; i++) {
       const row = lines[i];
@@ -229,27 +309,55 @@ export default function KotBills({ showToast, API_BASE }) {
       const assignTo = row[assignIndex] || '';
       const itemTotalStr = row[totalIndex] || '';
       const dateStr = dateIndex !== -1 ? row[dateIndex] : '';
+      const parsedDate = parseDateToYYYYMMDD(dateStr) || new Date().toISOString().split('T')[0];
 
       const itemName = row[itemIndex] || '';
 
-      // Reject charges (e.g. "Service Charge", "Packing Charges") whether flagged by category or item name
-      if (category.toLowerCase().includes('charge') || itemName.toLowerCase().includes('charge')) {
+      // Reject charges (Kudil Charge, AC Charges, or general charges)
+      if (isChargeItemOrCategory(category, itemName)) {
         ignoredCharges++;
         continue;
       }
 
-      // Reject products excluded from KOT (water, snacks, tumbler, etc.)
+      // Reject products unconditionally excluded from KOT (water 300/500ml, snacks, tumbler, etc.)
       if (isExcludedKotItem(itemName)) {
         ignoredItems++;
         continue;
       }
 
       const matchedSup = findSupplier(assignTo);
+
+      // Check conditional products (e.g. 2 Aquafina 1 L, 2 Water 1 L)
+      // Excluded ONLY if that particular person is having charges.
+      // If that person does NOT have charges, these two alone are added to the KOT calculation.
+      if (isConditionalKotItem(itemName)) {
+        const cleanAssign = (assignTo || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const keys = new Set();
+        if (cleanAssign) keys.add(cleanAssign);
+        if (matchedSup) {
+          keys.add(matchedSup.id.toString());
+          if (matchedSup.name) {
+            keys.add(matchedSup.name.toLowerCase().replace(/[^a-z0-9]/g, ''));
+          }
+        }
+
+        const personHasCharges = Array.from(keys).some(k => {
+          if (parsedDate && suppliersWithChargesByDate.has(`${k}_${parsedDate}`)) return true;
+          if (suppliersWithUndatedCharges.has(k)) return true;
+          if (suppliersWithCharges.has(k)) return true;
+          return false;
+        });
+
+        if (personHasCharges) {
+          ignoredItems++;
+          continue;
+        }
+      }
+
       if (matchedSup) {
         matchedSupplierCount++;
         const cleanAmt = itemTotalStr.replace(/[^0-9.]/g, '');
         const amt = parseFloat(cleanAmt) || 0;
-        const parsedDate = parseDateToYYYYMMDD(dateStr) || new Date().toISOString().split('T')[0];
 
         matchedRows.push({
           supplierId: matchedSup.id,

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   ShoppingBag, Calendar, DollarSign, Search, Filter, ArrowUpRight, 
   BarChart3, Banknote, Smartphone, Edit3, Upload, X, CheckCircle, 
@@ -17,6 +18,10 @@ export default function SalesCollections({ showToast, API_BASE }) {
   const [dailyData, setDailyData] = useState(null);
   const [monthlyData, setMonthlyData] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  // Print States
+  const [printDailyData, setPrintDailyData] = useState(null);
+  const [printMonthlyData, setPrintMonthlyData] = useState(null);
   
   // Filtering & Search in Day View
   const [searchTerm, setSearchTerm] = useState('');
@@ -517,6 +522,75 @@ export default function SalesCollections({ showToast, API_BASE }) {
     }
   };
 
+  // Handle printing for daily and monthly statements
+  useEffect(() => {
+    let isMounted = true;
+    if (printDailyData || printMonthlyData) {
+      const clearPrintData = () => {
+        if (isMounted) {
+          setPrintDailyData(null);
+          setPrintMonthlyData(null);
+        }
+      };
+
+      const timer = setTimeout(() => {
+        window.print();
+      }, 500);
+
+      const focusTimer = setTimeout(() => {
+        window.addEventListener('focus', clearPrintData);
+      }, 1000);
+
+      const handleAfterPrint = () => {
+        setTimeout(clearPrintData, 20000);
+      };
+
+      window.addEventListener('afterprint', handleAfterPrint);
+
+      return () => {
+        clearTimeout(timer);
+        clearTimeout(focusTimer);
+        window.removeEventListener('focus', clearPrintData);
+        window.removeEventListener('afterprint', handleAfterPrint);
+      };
+    }
+  }, [printDailyData, printMonthlyData]);
+
+  const handlePrintDaily = () => {
+    if (!dailyData) {
+      showToast('No sales data available for this day to print', 'info');
+      return;
+    }
+    setPrintDailyData({
+      date: selectedDate,
+      total_amount: dailyData.total_amount || 0,
+      cash_amount: dailyData.cash_amount || 0,
+      upi_amount: dailyData.upi_amount || 0,
+      total_items_count: dailyData.total_items_count || 0,
+      products: Array.isArray(dailyData.products) ? [...dailyData.products] : [],
+      printed_at: new Date().toLocaleString('en-IN')
+    });
+  };
+
+  const handlePrintMonthly = () => {
+    if (!monthlyData || monthlyData.length === 0) {
+      showToast('No sales data recorded for this month to print', 'info');
+      return;
+    }
+    setPrintMonthlyData({
+      month: selectedMonth,
+      days: [...monthlyData],
+      topProducts: [...topMonthlyProducts],
+      totals: {
+        revenue: monthTotalRevenue,
+        cash: monthCashTotal,
+        upi: monthUpiTotal,
+        units: monthUnitsTotal
+      },
+      printed_at: new Date().toLocaleString('en-IN')
+    });
+  };
+
   return (
     <div>
       {/* Header */}
@@ -622,10 +696,10 @@ export default function SalesCollections({ showToast, API_BASE }) {
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={() => window.print()}
+                  onClick={handlePrintDaily}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem' }}
                 >
-                  <Printer size={14} /> Print
+                  <Printer size={14} /> Print Day Statement
                 </button>
                 <button
                   type="button"
@@ -913,7 +987,8 @@ export default function SalesCollections({ showToast, API_BASE }) {
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={() => window.print()}
+                onClick={handlePrintMonthly}
+                disabled={monthlyData.length === 0}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem' }}
               >
                 <Printer size={14} /> Print Monthly Report
@@ -1440,6 +1515,231 @@ export default function SalesCollections({ showToast, API_BASE }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* ======= HIDDEN PRINT-FRIENDLY DAILY SALES STATEMENT ====== */}
+      {/* ========================================================= */}
+      {printDailyData && createPortal(
+        <div className="printable-sales-statement" style={{ position: 'relative' }}>
+          <div style={{ textAlign: 'center', borderBottom: '2px solid #000', paddingBottom: '0.75rem', marginBottom: '1.25rem' }}>
+            <h2 style={{ fontFamily: 'Montserrat, sans-serif', fontSize: '1.5rem', fontWeight: 700, margin: 0, textTransform: 'uppercase' }}>
+              Udumalai Cosmo Recreation Club
+            </h2>
+            <div style={{ fontSize: '0.82rem', color: '#666', marginTop: '0.2rem' }}>
+              FL2 License Club Bar • Timings: 11:00 AM to 11:00 PM
+            </div>
+            <h3 style={{ fontSize: '1.05rem', marginTop: '0.6rem', textTransform: 'uppercase', letterSpacing: '1px' }}>
+              Daily Sales & Collections Statement
+            </h3>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem', fontSize: '0.85rem' }}>
+            <div>
+              <strong>Sales Date:</strong> {formatDateDisplay(printDailyData.date)} ({getDayName(printDailyData.date)})<br />
+              <strong>Total Volume:</strong> {printDailyData.total_items_count} Units ({printDailyData.products.length} Products)
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <strong>Printed Date:</strong> {printDailyData.printed_at}<br />
+              <strong>Total Revenue:</strong> <span style={{ fontSize: '1rem', fontWeight: 700 }}>{formatCurrency(printDailyData.total_amount)}</span>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '1.25rem', padding: '0.75rem', border: '1px solid #ccc', borderRadius: '4px', background: '#f9f9f9', fontSize: '0.82rem' }}>
+            <div>
+              <span style={{ color: '#666' }}>Cash Collected:</span><br />
+              <strong style={{ fontSize: '0.95rem' }}>{formatCurrency(printDailyData.cash_amount)}</strong>
+              <span style={{ fontSize: '0.72rem', color: '#666' }}> ({printDailyData.total_amount ? Math.round((printDailyData.cash_amount / printDailyData.total_amount) * 100) : 0}%)</span>
+            </div>
+            <div>
+              <span style={{ color: '#666' }}>UPI / Online Collected:</span><br />
+              <strong style={{ fontSize: '0.95rem' }}>{formatCurrency(printDailyData.upi_amount)}</strong>
+              <span style={{ fontSize: '0.72rem', color: '#666' }}> ({printDailyData.total_amount ? Math.round((printDailyData.upi_amount / printDailyData.total_amount) * 100) : 0}%)</span>
+            </div>
+            <div>
+              <span style={{ color: '#666' }}>Total Amount:</span><br />
+              <strong style={{ fontSize: '1rem' }}>{formatCurrency(printDailyData.total_amount)}</strong>
+            </div>
+          </div>
+
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1.5rem', fontSize: '0.82rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #333', background: '#f2f2f2' }}>
+                <th style={{ padding: '0.45rem', textAlign: 'center', width: '35px' }}>#</th>
+                <th style={{ padding: '0.45rem', textAlign: 'left' }}>Product Name</th>
+                <th style={{ padding: '0.45rem', textAlign: 'left', width: '110px' }}>Category</th>
+                <th style={{ padding: '0.45rem', textAlign: 'center', width: '90px' }}>Qty Sold</th>
+                <th style={{ padding: '0.45rem', textAlign: 'right', width: '90px' }}>Total Amount</th>
+                <th style={{ padding: '0.45rem', textAlign: 'right', width: '65px' }}>Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {printDailyData.products.map((p, idx) => {
+                const share = printDailyData.total_amount > 0 ? ((p.amount / printDailyData.total_amount) * 100).toFixed(1) : '0';
+                return (
+                  <tr key={idx} style={{ borderBottom: '1px solid #ddd' }}>
+                    <td style={{ padding: '0.4rem', textAlign: 'center', color: '#666' }}>{idx + 1}</td>
+                    <td style={{ padding: '0.4rem', fontWeight: 600 }}>{p.name}</td>
+                    <td style={{ padding: '0.4rem', color: '#555' }}>{p.category || 'General'}</td>
+                    <td style={{ padding: '0.4rem', textAlign: 'center', fontWeight: 700 }}>{p.quantity}</td>
+                    <td style={{ padding: '0.4rem', textAlign: 'right', fontWeight: 600 }}>{formatCurrency(p.amount)}</td>
+                    <td style={{ padding: '0.4rem', textAlign: 'right', color: '#555' }}>{share}%</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{ borderTop: '2px solid #333', fontWeight: 700, background: '#f9f9f9' }}>
+                <td colSpan="3" style={{ padding: '0.5rem', textAlign: 'right' }}>Total ({printDailyData.products.length} Products):</td>
+                <td style={{ padding: '0.5rem', textAlign: 'center' }}>{printDailyData.total_items_count} Units</td>
+                <td style={{ padding: '0.5rem', textAlign: 'right' }}>{formatCurrency(printDailyData.total_amount)}</td>
+                <td style={{ padding: '0.5rem', textAlign: 'right' }}>100%</td>
+              </tr>
+            </tfoot>
+          </table>
+
+          <div style={{ marginTop: '2.5rem', display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+            <div>
+              <div>Verified By: ___________________</div>
+              <div style={{ fontSize: '0.72rem', color: '#666', marginTop: '0.2rem' }}>Manager / Accounts In-Charge</div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div>Authorized Signatory: ___________________</div>
+              <div style={{ fontSize: '0.72rem', color: '#666', marginTop: '0.2rem' }}>Secretary / Treasurer</div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ========================================================= */}
+      {/* ====== HIDDEN PRINT-FRIENDLY MONTHLY SALES STATEMENT ==== */}
+      {/* ========================================================= */}
+      {printMonthlyData && createPortal(
+        <div className="printable-sales-statement" style={{ position: 'relative' }}>
+          <div style={{ textAlign: 'center', borderBottom: '2px solid #000', paddingBottom: '0.75rem', marginBottom: '1.25rem' }}>
+            <h2 style={{ fontFamily: 'Montserrat, sans-serif', fontSize: '1.5rem', fontWeight: 700, margin: 0, textTransform: 'uppercase' }}>
+              Udumalai Cosmo Recreation Club
+            </h2>
+            <div style={{ fontSize: '0.82rem', color: '#666', marginTop: '0.2rem' }}>
+              FL2 License Club Bar • Timings: 11:00 AM to 11:00 PM
+            </div>
+            <h3 style={{ fontSize: '1.05rem', marginTop: '0.6rem', textTransform: 'uppercase', letterSpacing: '1px' }}>
+              Monthly Sales & Collections Report — {printMonthlyData.month}
+            </h3>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem', fontSize: '0.85rem' }}>
+            <div>
+              <strong>Report Month:</strong> {printMonthlyData.month}<br />
+              <strong>Active Sales Days:</strong> {printMonthlyData.days.length} Days
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <strong>Printed Date:</strong> {printMonthlyData.printed_at}<br />
+              <strong>Total Month Revenue:</strong> <span style={{ fontSize: '1rem', fontWeight: 700 }}>{formatCurrency(printMonthlyData.totals.revenue)}</span>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0.75rem', marginBottom: '1.5rem', padding: '0.75rem', border: '1px solid #ccc', borderRadius: '4px', background: '#f9f9f9', fontSize: '0.82rem' }}>
+            <div>
+              <span style={{ color: '#666' }}>Month Revenue:</span><br />
+              <strong style={{ fontSize: '1rem' }}>{formatCurrency(printMonthlyData.totals.revenue)}</strong>
+            </div>
+            <div>
+              <span style={{ color: '#666' }}>Total Cash:</span><br />
+              <strong style={{ fontSize: '0.95rem' }}>{formatCurrency(printMonthlyData.totals.cash)}</strong>
+            </div>
+            <div>
+              <span style={{ color: '#666' }}>Total UPI:</span><br />
+              <strong style={{ fontSize: '0.95rem' }}>{formatCurrency(printMonthlyData.totals.upi)}</strong>
+            </div>
+            <div>
+              <span style={{ color: '#666' }}>Total Units Sold:</span><br />
+              <strong style={{ fontSize: '0.95rem' }}>{printMonthlyData.totals.units} Units</strong>
+            </div>
+          </div>
+
+          <h4 style={{ fontSize: '0.9rem', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Day-by-Day Collections Log
+          </h4>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1.5rem', fontSize: '0.82rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #333', background: '#f2f2f2' }}>
+                <th style={{ padding: '0.45rem', textAlign: 'center', width: '35px' }}>#</th>
+                <th style={{ padding: '0.45rem', textAlign: 'left' }}>Date</th>
+                <th style={{ padding: '0.45rem', textAlign: 'left', width: '80px' }}>Day</th>
+                <th style={{ padding: '0.45rem', textAlign: 'center', width: '90px' }}>Units Sold</th>
+                <th style={{ padding: '0.45rem', textAlign: 'right', width: '110px' }}>Cash (₹)</th>
+                <th style={{ padding: '0.45rem', textAlign: 'right', width: '110px' }}>UPI (₹)</th>
+                <th style={{ padding: '0.45rem', textAlign: 'right', width: '110px' }}>Day Total (₹)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {printMonthlyData.days.map((d, idx) => (
+                <tr key={idx} style={{ borderBottom: '1px solid #ddd' }}>
+                  <td style={{ padding: '0.4rem', textAlign: 'center', color: '#666' }}>{idx + 1}</td>
+                  <td style={{ padding: '0.4rem', fontWeight: 600 }}>{formatDateDisplay(d.date)}</td>
+                  <td style={{ padding: '0.4rem', color: '#555' }}>{getDayName(d.date)}</td>
+                  <td style={{ padding: '0.4rem', textAlign: 'center' }}>{d.total_items_count || 0}</td>
+                  <td style={{ padding: '0.4rem', textAlign: 'right' }}>{formatCurrency(d.cash_amount)}</td>
+                  <td style={{ padding: '0.4rem', textAlign: 'right' }}>{formatCurrency(d.upi_amount)}</td>
+                  <td style={{ padding: '0.4rem', textAlign: 'right', fontWeight: 600 }}>{formatCurrency(d.total_amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr style={{ borderTop: '2px solid #333', fontWeight: 700, background: '#f9f9f9' }}>
+                <td colSpan="3" style={{ padding: '0.5rem', textAlign: 'right' }}>Monthly Total:</td>
+                <td style={{ padding: '0.5rem', textAlign: 'center' }}>{printMonthlyData.totals.units}</td>
+                <td style={{ padding: '0.5rem', textAlign: 'right' }}>{formatCurrency(printMonthlyData.totals.cash)}</td>
+                <td style={{ padding: '0.5rem', textAlign: 'right' }}>{formatCurrency(printMonthlyData.totals.upi)}</td>
+                <td style={{ padding: '0.5rem', textAlign: 'right' }}>{formatCurrency(printMonthlyData.totals.revenue)}</td>
+              </tr>
+            </tfoot>
+          </table>
+
+          {printMonthlyData.topProducts.length > 0 && (
+            <>
+              <h4 style={{ fontSize: '0.9rem', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Top Moving Products of the Month
+              </h4>
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1.5rem', fontSize: '0.82rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #333', background: '#f2f2f2' }}>
+                    <th style={{ padding: '0.45rem', textAlign: 'center', width: '45px' }}>Rank</th>
+                    <th style={{ padding: '0.45rem', textAlign: 'left' }}>Product Name</th>
+                    <th style={{ padding: '0.45rem', textAlign: 'left', width: '110px' }}>Category</th>
+                    <th style={{ padding: '0.45rem', textAlign: 'center', width: '90px' }}>Total Units</th>
+                    <th style={{ padding: '0.45rem', textAlign: 'right', width: '110px' }}>Total Revenue (₹)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {printMonthlyData.topProducts.slice(0, 20).map((p, idx) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid #ddd' }}>
+                      <td style={{ padding: '0.4rem', textAlign: 'center', color: '#666' }}>#{idx + 1}</td>
+                      <td style={{ padding: '0.4rem', fontWeight: 600 }}>{p.name}</td>
+                      <td style={{ padding: '0.4rem', color: '#555' }}>{p.category || 'General'}</td>
+                      <td style={{ padding: '0.4rem', textAlign: 'center', fontWeight: 700 }}>{p.quantity}</td>
+                      <td style={{ padding: '0.4rem', textAlign: 'right', fontWeight: 600 }}>{formatCurrency(p.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          <div style={{ marginTop: '2.5rem', display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+            <div>
+              <div>Verified By: ___________________</div>
+              <div style={{ fontSize: '0.72rem', color: '#666', marginTop: '0.2rem' }}>Manager / Accounts In-Charge</div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div>Authorized Signatory: ___________________</div>
+              <div style={{ fontSize: '0.72rem', color: '#666', marginTop: '0.2rem' }}>Secretary / Treasurer</div>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

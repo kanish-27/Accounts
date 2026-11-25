@@ -1117,6 +1117,7 @@ body.light-theme .login-container {
 @media screen {
   .printable-kot-statement,
   .printable-attendance-statement,
+  .printable-sales-statement,
   .print-slip-overlay {
     display: none !important;
   }
@@ -1162,7 +1163,8 @@ body.light-theme .login-container {
   
   .printable-payslip,
   .printable-kot-statement,
-  .printable-attendance-statement {
+  .printable-attendance-statement,
+  .printable-sales-statement {
     display: block !important;
     border: none !important;
     padding: 0 !important;
@@ -1174,6 +1176,14 @@ body.light-theme .login-container {
     background: white !important;
     box-shadow: none !important;
     border-radius: 0 !important;
+  }
+
+  .printable-sales-statement {
+    page-break-inside: auto !important;
+  }
+
+  .printable-sales-statement tr {
+    page-break-inside: avoid !important;
   }
 
   .print-slip-overlay {
@@ -1200,14 +1210,20 @@ body.light-theme .login-container {
   .printable-attendance-statement h3,
   .printable-attendance-statement table, 
   .printable-attendance-statement th, 
-  .printable-attendance-statement td {
+  .printable-attendance-statement td,
+  .printable-sales-statement h2,
+  .printable-sales-statement h3,
+  .printable-sales-statement table,
+  .printable-sales-statement th,
+  .printable-sales-statement td {
     color: black !important;
     border-color: #ccc !important;
   }
 
   .printable-payslip th,
   .printable-kot-statement th,
-  .printable-attendance-statement th {
+  .printable-attendance-statement th,
+  .printable-sales-statement th {
     background-color: #f2f2f2 !important;
   }
 

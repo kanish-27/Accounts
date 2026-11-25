@@ -37,6 +37,13 @@ export default function SalesCollections({ showToast, API_BASE }) {
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
 
+  // Modal: Edit Product Quantity / Details
+  const [showEditProductModal, setShowEditProductModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [editProductQty, setEditProductQty] = useState(0);
+  const [editProductAmt, setEditProductAmt] = useState(0);
+  const [savingProduct, setSavingProduct] = useState(false);
+
   // Currency Formatter
   const formatCurrency = (amt) => {
     return new Intl.NumberFormat('en-IN', {
@@ -134,6 +141,41 @@ export default function SalesCollections({ showToast, API_BASE }) {
     }
   };
 
+  // Edit individual product quantity / amount
+  const handleOpenEditProduct = (prod) => {
+    setEditingProduct(prod);
+    setEditProductQty(prod.quantity || 0);
+    setEditProductAmt(prod.amount || 0);
+    setShowEditProductModal(true);
+  };
+
+  const handleSaveProductEdit = async () => {
+    if (!editingProduct) return;
+    try {
+      setSavingProduct(true);
+      const res = await fetch(`${API_BASE}/sales/daily/${selectedDate}/product`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productName: editingProduct.name,
+          quantity: parseFloat(editProductQty) || 0,
+          amount: parseFloat(editProductAmt) || 0
+        })
+      });
+      if (!res.ok) throw new Error('Failed to update product details');
+      const updated = await res.json();
+      setDailyData(updated);
+      setShowEditProductModal(false);
+      showToast(`Updated "${editingProduct.name}" to ${editProductQty} units`, 'success');
+      if (viewMode === 'monthly') fetchMonthlySales(selectedMonth);
+    } catch (err) {
+      console.error(err);
+      showToast('Error updating product details', 'error');
+    } finally {
+      setSavingProduct(false);
+    }
+  };
+
   // CSV parsing for direct upload
   const parseCSV = (text) => {
     const lines = [];
@@ -171,12 +213,51 @@ export default function SalesCollections({ showToast, API_BASE }) {
   const processSalesFromCSV = (lines) => {
     if (lines.length < 2) return { error: 'CSV file is empty or missing data rows.' };
 
-    const headers = lines[0].map(h => h.toLowerCase().replace(/[\s_-]+/g, ''));
+    const headers = lines[0].map(h => (h || '').toLowerCase().replace(/[\s_\-.]+/g, ''));
     const categoryIndex = headers.findIndex(h => h.includes('category'));
     const itemIndex = headers.findIndex(h => (h.includes('item') || h.includes('product')) &&
       !['total', 'price', 'qty', 'quantity', 'id', 'code', 'amount', 'tax', 'discount', 'sum', 'count'].some(w => h.includes(w)));
-    const totalIndex = headers.findIndex(h => h.includes('itemtotal') || h.includes('total') || h.includes('amount') || h.includes('price'));
-    const qtyIndex = headers.findIndex(h => h === 'qty' || h === 'quantity' || h.includes('qty') || h.includes('quantity') || h.includes('count'));
+    const totalIndex = headers.findIndex(h => h.includes('itemtotal') || h.includes('total') || h.includes('amount'));
+
+    const qtyIndex = (() => {
+      // 1. Direct match for standard item quantity headers (after stripping symbols/spaces)
+      let idx = headers.findIndex(h => 
+        h === 'itemquantity' || h === 'itemqty' || h === 'quantity' || h === 'qty' || 
+        h === 'itemcount' || h === 'itemquant' || h === 'totalqty' || h === 'totqty'
+      );
+      if (idx !== -1) return idx;
+
+      // 2. Starts with itemqu or itemqty (e.g. item_quantity, item_qty)
+      idx = headers.findIndex(h => h.startsWith('itemqu') || h.startsWith('itemqty'));
+      if (idx !== -1) return idx;
+
+      // 3. Contains quantity or qty (excluding price/amount/total/tax/discount)
+      idx = headers.findIndex(h => 
+        (h.includes('quantity') || h.includes('qty')) &&
+        !['price', 'total', 'amount', 'tax', 'rate', 'disc', 'cost'].some(bad => h.includes(bad))
+      );
+      if (idx !== -1) return idx;
+
+      // 4. Safe count matches (EXPLICITLY exclude account, discount, taxable, etc.)
+      idx = headers.findIndex(h => 
+        (h.includes('count') || h.includes('pieces') || h.includes('units') || h.includes('nos')) &&
+        !['account', 'discount', 'price', 'total', 'amount', 'tax', 'taxable', 'bill', 'table', 'token'].some(bad => h.includes(bad))
+      );
+      return idx;
+    })();
+
+    const priceIndex = (() => {
+      let idx = headers.findIndex(h => 
+        h === 'itemprice' || h === 'price' || h === 'itemrate' || h === 'rate' || h === 'unitprice'
+      );
+      if (idx !== -1) return idx;
+      idx = headers.findIndex(h => 
+        (h.includes('price') || h.includes('rate')) &&
+        !['total', 'tax', 'discount', 'amount', 'disc'].some(bad => h.includes(bad))
+      );
+      return idx;
+    })();
+
     const payModeIndex = headers.findIndex(h => (h.includes('pay') || h.includes('tender') || h.includes('mode')) && !h.includes('amount') && !h.includes('total'));
     const cashIndex = headers.findIndex(h => h === 'cash' || h === 'cashamount');
     const upiIndex = headers.findIndex(h => h === 'upi' || h === 'upiamount' || h === 'gpay' || h === 'online');
@@ -202,22 +283,26 @@ export default function SalesCollections({ showToast, API_BASE }) {
       const amtStr = row[totalIndex] || '';
       const amt = parseFloat(amtStr.replace(/[^0-9.]/g, '')) || 0;
 
-      let qty = 1;
-      if (qtyIndex !== -1 && row[qtyIndex]) {
-        const q = parseFloat(row[qtyIndex].replace(/[^0-9.]/g, ''));
+      let qty = 0;
+      if (qtyIndex !== -1 && row[qtyIndex] !== undefined && row[qtyIndex] !== null && row[qtyIndex] !== '') {
+        const q = parseFloat(String(row[qtyIndex]).replace(/[^0-9.]/g, ''));
         if (!isNaN(q) && q > 0) qty = q;
-      } else {
-        const m = itemName.match(/^(\d+(?:\.\d+)?)\s*(?:x|×|\*|-|\.|\/)?\s*(.+)/i);
-        if (m) {
-          const q = parseFloat(m[1]);
-          if (!isNaN(q) && q > 0) qty = q;
+      }
+
+      // Fallback: calculate from item_total / item_price if quantity column was missing
+      if (qty <= 0 && priceIndex !== -1 && row[priceIndex] !== undefined && amt > 0) {
+        const pr = parseFloat(String(row[priceIndex]).replace(/[^0-9.]/g, ''));
+        if (!isNaN(pr) && pr > 0) {
+          const derived = Math.round(amt / pr);
+          if (derived > 0) qty = derived;
         }
       }
 
-      let cleanName = itemName;
-      const leadingMatch = itemName.match(/^(\d+(?:\.\d+)?)\s*(?:x|×|\*|-|\.|\/)?\s*(.+)/i);
-      if (leadingMatch && qtyIndex === -1) cleanName = leadingMatch[2].trim();
+      if (qty <= 0) {
+        qty = 1;
+      }
 
+      const cleanName = itemName;
       totalAmt += amt;
       totalUnits += qty;
 
@@ -680,9 +765,20 @@ export default function SalesCollections({ showToast, API_BASE }) {
                             </span>
                           </td>
                           <td style={{ textAlign: 'center' }}>
-                            <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#60a5fa', background: 'rgba(59, 130, 246, 0.12)', padding: '2px 10px', borderRadius: '4px' }}>
-                              {p.quantity}
-                            </span>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', justifyContent: 'center' }}>
+                              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#60a5fa', background: 'rgba(59, 130, 246, 0.12)', padding: '2px 10px', borderRadius: '4px' }}>
+                                {p.quantity}
+                              </span>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-icon"
+                                style={{ padding: '0.2rem', height: '22px', width: '22px', borderRadius: '4px' }}
+                                title={`Edit quantity for ${p.name}`}
+                                onClick={() => handleOpenEditProduct(p)}
+                              >
+                                <Edit3 size={11} />
+                              </button>
+                            </div>
                           </td>
                           <td className="text-gold" style={{ textAlign: 'right', fontWeight: 600 }}>
                             {formatCurrency(p.amount)}
@@ -1208,6 +1304,87 @@ export default function SalesCollections({ showToast, API_BASE }) {
                 style={{ flex: 1 }}
               >
                 {uploading ? 'Saving...' : 'Confirm & Save Sales'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* ============= MODAL: EDIT PRODUCT DETAILS =============== */}
+      {/* ========================================================= */}
+      {showEditProductModal && editingProduct && (
+        <div className="modal-backdrop">
+          <div className="modal-content" style={{ maxWidth: '420px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-primary)' }}>
+                  Edit Product Quantity
+                </h3>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  {editingProduct.name} ({editingProduct.category || 'General'})
+                </span>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => { setShowEditProductModal(false); setEditingProduct(null); }}
+                className="btn btn-icon btn-secondary"
+                style={{ padding: '0.2rem' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: '0.35rem' }}>
+                Total Quantity Sold (Units) *
+              </label>
+              <input
+                type="number"
+                value={editProductQty}
+                onChange={(e) => setEditProductQty(e.target.value)}
+                className="form-control"
+                min="0"
+                step="1"
+                placeholder="e.g. 56"
+                autoFocus
+              />
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
+                Actual units sold across all orders on {formatDateDisplay(selectedDate)}.
+              </span>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+              <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: '0.35rem' }}>
+                Total Sales Amount (₹)
+              </label>
+              <input
+                type="number"
+                value={editProductAmt}
+                onChange={(e) => setEditProductAmt(e.target.value)}
+                className="form-control"
+                min="0"
+                step="1"
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button
+                type="button"
+                onClick={() => { setShowEditProductModal(false); setEditingProduct(null); }}
+                className="btn btn-secondary"
+                style={{ flex: 1 }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveProductEdit}
+                disabled={savingProduct}
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+              >
+                {savingProduct ? 'Saving...' : 'Update Product'}
               </button>
             </div>
           </div>

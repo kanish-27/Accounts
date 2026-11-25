@@ -533,6 +533,80 @@ app.patch('/api/sales/daily/:date/collection', asyncHandler(async (req, res) => 
   res.json({ id: updatedDoc.id, ...updatedDoc.data() });
 }));
 
+// Update a single product's quantity or amount in daily sales (e.g. adjust after import)
+app.patch('/api/sales/daily/:date/product', asyncHandler(async (req, res) => {
+  const { date } = req.params;
+  const { productName, quantity, amount, category } = req.body;
+  if (!productName) {
+    return res.status(400).json({ error: 'productName is required' });
+  }
+
+  const docRef = db.collection('daily_sales').doc(date);
+  const doc = await docRef.get();
+  if (!doc.exists) {
+    return res.status(404).json({ error: `Sales record not found for date ${date}` });
+  }
+
+  const data = doc.data();
+  const products = Array.isArray(data.products) ? [...data.products] : [];
+  const pIdx = products.findIndex(p => p.name.toLowerCase() === productName.toLowerCase());
+
+  if (pIdx === -1) {
+    return res.status(404).json({ error: `Product "${productName}" not found in sales for date ${date}` });
+  }
+
+  if (quantity !== undefined) {
+    products[pIdx].quantity = Math.round((parseFloat(quantity) || 0) * 100) / 100;
+  }
+  if (amount !== undefined) {
+    products[pIdx].amount = Math.round((parseFloat(amount) || 0) * 100) / 100;
+  }
+  if (category !== undefined) {
+    products[pIdx].category = category;
+  }
+
+  const newTotalUnits = products.reduce((sum, p) => sum + (p.quantity || 0), 0);
+  const newTotalAmt = products.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+  await docRef.update({
+    products,
+    total_items_count: Math.round(newTotalUnits * 100) / 100,
+    total_amount: Math.round(newTotalAmt * 100) / 100,
+    updated_at: new Date().toISOString()
+  });
+
+  const updatedDoc = await docRef.get();
+  res.json({ id: updatedDoc.id, ...updatedDoc.data() });
+}));
+
+// Replace / update all products for a date
+app.put('/api/sales/daily/:date/products', asyncHandler(async (req, res) => {
+  const { date } = req.params;
+  const { products } = req.body;
+  if (!Array.isArray(products)) {
+    return res.status(400).json({ error: 'products array is required' });
+  }
+
+  const docRef = db.collection('daily_sales').doc(date);
+  const doc = await docRef.get();
+  if (!doc.exists) {
+    return res.status(404).json({ error: `Sales record not found for date ${date}` });
+  }
+
+  const newTotalUnits = products.reduce((sum, p) => sum + (parseFloat(p.quantity) || 0), 0);
+  const newTotalAmt = products.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+
+  await docRef.update({
+    products,
+    total_items_count: Math.round(newTotalUnits * 100) / 100,
+    total_amount: Math.round(newTotalAmt * 100) / 100,
+    updated_at: new Date().toISOString()
+  });
+
+  const updatedDoc = await docRef.get();
+  res.json({ id: updatedDoc.id, ...updatedDoc.data() });
+}));
+
 // Get all sales records for a month (YYYY-MM)
 app.get('/api/sales/month', asyncHandler(async (req, res) => {
   const { month } = req.query; // YYYY-MM

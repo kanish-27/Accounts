@@ -216,9 +216,42 @@ export default function KotBills({ showToast, API_BASE }) {
     })();
 
     const qtyIndex = (() => {
-      let idx = headers.findIndex(h => h === 'qty' || h === 'quantity' || h === 'itemqty' || h === 'item_qty');
+      // 1. Direct match for standard item quantity headers (after stripping symbols/spaces)
+      let idx = headers.findIndex(h => 
+        h === 'itemquantity' || h === 'itemqty' || h === 'quantity' || h === 'qty' || 
+        h === 'itemcount' || h === 'itemquant' || h === 'totalqty' || h === 'totqty'
+      );
       if (idx !== -1) return idx;
-      return headers.findIndex(h => h.includes('qty') || h.includes('quantity') || h.includes('count') || h.includes('pieces') || h.includes('units') || h.includes('nos'));
+
+      // 2. Starts with itemqu or itemqty (e.g. item_quantity, item_qty)
+      idx = headers.findIndex(h => h.startsWith('itemqu') || h.startsWith('itemqty'));
+      if (idx !== -1) return idx;
+
+      // 3. Contains quantity or qty (excluding price/amount/total/tax/discount)
+      idx = headers.findIndex(h => 
+        (h.includes('quantity') || h.includes('qty')) &&
+        !['price', 'total', 'amount', 'tax', 'rate', 'disc', 'cost'].some(bad => h.includes(bad))
+      );
+      if (idx !== -1) return idx;
+
+      // 4. Safe count matches (EXPLICITLY exclude account, discount, taxable, etc.)
+      idx = headers.findIndex(h => 
+        (h.includes('count') || h.includes('pieces') || h.includes('units') || h.includes('nos')) &&
+        !['account', 'discount', 'price', 'total', 'amount', 'tax', 'taxable', 'bill', 'table', 'token'].some(bad => h.includes(bad))
+      );
+      return idx;
+    })();
+
+    const priceIndex = (() => {
+      let idx = headers.findIndex(h => 
+        h === 'itemprice' || h === 'price' || h === 'itemrate' || h === 'rate' || h === 'unitprice'
+      );
+      if (idx !== -1) return idx;
+      idx = headers.findIndex(h => 
+        (h.includes('price') || h.includes('rate')) &&
+        !['total', 'tax', 'discount', 'amount', 'disc'].some(bad => h.includes(bad))
+      );
+      return idx;
     })();
 
     const payModeIndex = (() => {
@@ -486,23 +519,27 @@ export default function KotBills({ showToast, API_BASE }) {
 
       if (!itemName) continue;
 
-      let rowQty = 1;
-      if (qtyIndex !== -1 && row[qtyIndex]) {
-        const q = parseFloat(row[qtyIndex].replace(/[^0-9.]/g, ''));
+      let rowQty = 0;
+      if (qtyIndex !== -1 && row[qtyIndex] !== undefined && row[qtyIndex] !== null && row[qtyIndex] !== '') {
+        const q = parseFloat(String(row[qtyIndex]).replace(/[^0-9.]/g, ''));
         if (!isNaN(q) && q > 0) rowQty = q;
-      } else {
-        const m = itemName.match(/^(\d+(?:\.\d+)?)\s*(?:x|×|\*|-|\.|\/)?\s*(.+)/i);
-        if (m) {
-          const q = parseFloat(m[1]);
-          if (!isNaN(q) && q > 0) rowQty = q;
+      }
+
+      // Fallback: calculate from item_total / item_price if quantity column wasn't populated
+      if (rowQty <= 0 && priceIndex !== -1 && row[priceIndex] !== undefined && amt > 0) {
+        const pr = parseFloat(String(row[priceIndex]).replace(/[^0-9.]/g, ''));
+        if (!isNaN(pr) && pr > 0) {
+          const derived = Math.round(amt / pr);
+          if (derived > 0) rowQty = derived;
         }
       }
 
-      let cleanItemName = itemName;
-      const leadingMatch = itemName.match(/^(\d+(?:\.\d+)?)\s*(?:x|×|\*|-|\.|\/)?\s*(.+)/i);
-      if (leadingMatch && qtyIndex === -1) {
-        cleanItemName = leadingMatch[2].trim();
+      // Default to 1 if neither quantity nor price was available
+      if (rowQty <= 0) {
+        rowQty = 1;
       }
+
+      const cleanItemName = itemName;
 
       totalSalesAmount += amt;
       totalSalesUnits += rowQty;

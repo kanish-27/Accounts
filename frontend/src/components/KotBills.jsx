@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Wine, Plus, Search, Filter, Trash2, Calendar, User, DollarSign, Upload, X, CheckCircle, FileSpreadsheet, AlertCircle } from 'lucide-react';
+import { Wine, Plus, Search, Filter, Trash2, Calendar, User, DollarSign, Upload, X, CheckCircle, FileSpreadsheet, AlertCircle, ShoppingBag } from 'lucide-react';
 
 // Products that never count towards a supplier's KOT amount
 const EXCLUDED_KOT_ITEMS = [
@@ -214,6 +214,21 @@ export default function KotBills({ showToast, API_BASE }) {
       return headers.findIndex(h => (h.includes('item') || h.includes('product')) &&
         !['total', 'price', 'qty', 'quantity', 'id', 'code', 'amount', 'tax', 'discount', 'sum', 'count'].some(w => h.includes(w)));
     })();
+
+    const qtyIndex = (() => {
+      let idx = headers.findIndex(h => h === 'qty' || h === 'quantity' || h === 'itemqty' || h === 'item_qty');
+      if (idx !== -1) return idx;
+      return headers.findIndex(h => h.includes('qty') || h.includes('quantity') || h.includes('count') || h.includes('pieces') || h.includes('units') || h.includes('nos'));
+    })();
+
+    const payModeIndex = (() => {
+      let idx = headers.findIndex(h => h === 'paymentmode' || h === 'payment_mode' || h === 'paymode' || h === 'pay_mode' || h === 'paymenttype' || h === 'payment_type');
+      if (idx !== -1) return idx;
+      return headers.findIndex(h => (h.includes('pay') || h.includes('tender') || h.includes('mode') || h.includes('settle')) && !h.includes('amount') && !h.includes('total') && !h.includes('payout'));
+    })();
+
+    const cashIndex = headers.findIndex(h => h === 'cash' || h === 'cashamount' || h === 'cash_amount' || h === 'paidcash');
+    const upiIndex = headers.findIndex(h => h === 'upi' || h === 'upiamount' || h === 'upi_amount' || h === 'gpay' || h === 'online' || h === 'onlineamount' || h === 'qr');
 
     if (categoryIndex === -1) {
       return { error: 'Could not find "category_name" column in CSV.' };
@@ -450,6 +465,114 @@ export default function KotBills({ showToast, API_BASE }) {
       return a.supplier_name.localeCompare(b.supplier_name);
     });
 
+    // Aggregate product-level sales & Cash vs UPI breakdown for the "Sales & Collections" tab
+    const productSalesMap = new Map();
+    let totalSalesUnits = 0;
+    let totalSalesAmount = 0;
+    let detectedCashAmount = 0;
+    let detectedUpiAmount = 0;
+    let hasPaymentModeData = false;
+
+    for (let i = 1; i < lines.length; i++) {
+      const row = lines[i];
+      if (row.length === 1 && row[0] === '') continue;
+      if (row.length <= Math.max(categoryIndex, assignIndex, totalIndex)) continue;
+
+      const category = (row[categoryIndex] || '').trim() || 'General';
+      const itemName = (row[itemIndex] || '').trim();
+      const itemTotalStr = row[totalIndex] || '';
+      const cleanAmt = itemTotalStr.replace(/[^0-9.]/g, '');
+      const amt = parseFloat(cleanAmt) || 0;
+
+      if (!itemName) continue;
+
+      let rowQty = 1;
+      if (qtyIndex !== -1 && row[qtyIndex]) {
+        const q = parseFloat(row[qtyIndex].replace(/[^0-9.]/g, ''));
+        if (!isNaN(q) && q > 0) rowQty = q;
+      } else {
+        const m = itemName.match(/^(\d+(?:\.\d+)?)\s*(?:x|×|\*|-|\.|\/)?\s*(.+)/i);
+        if (m) {
+          const q = parseFloat(m[1]);
+          if (!isNaN(q) && q > 0) rowQty = q;
+        }
+      }
+
+      let cleanItemName = itemName;
+      const leadingMatch = itemName.match(/^(\d+(?:\.\d+)?)\s*(?:x|×|\*|-|\.|\/)?\s*(.+)/i);
+      if (leadingMatch && qtyIndex === -1) {
+        cleanItemName = leadingMatch[2].trim();
+      }
+
+      totalSalesAmount += amt;
+      totalSalesUnits += rowQty;
+
+      const pKey = cleanItemName.toLowerCase();
+      if (!productSalesMap.has(pKey)) {
+        productSalesMap.set(pKey, {
+          name: cleanItemName,
+          category,
+          quantity: 0,
+          amount: 0
+        });
+      }
+      const pObj = productSalesMap.get(pKey);
+      pObj.quantity += rowQty;
+      pObj.amount += amt;
+
+      if (cashIndex !== -1 || upiIndex !== -1) {
+        const rowCash = cashIndex !== -1 ? (parseFloat((row[cashIndex] || '').replace(/[^0-9.]/g, '')) || 0) : 0;
+        const rowUpi = upiIndex !== -1 ? (parseFloat((row[upiIndex] || '').replace(/[^0-9.]/g, '')) || 0) : 0;
+        if (rowCash > 0 || rowUpi > 0) {
+          detectedCashAmount += rowCash;
+          detectedUpiAmount += rowUpi;
+          hasPaymentModeData = true;
+        }
+      } else if (payModeIndex !== -1) {
+        const pMode = (row[payModeIndex] || '').toLowerCase();
+        if (
+          pMode.includes('upi') || pMode.includes('gpay') || pMode.includes('phonepe') ||
+          pMode.includes('paytm') || pMode.includes('online') || pMode.includes('qr') ||
+          pMode.includes('scan') || pMode.includes('card') || pMode.includes('pos') ||
+          pMode.includes('bank') || pMode.includes('transfer')
+        ) {
+          detectedUpiAmount += amt;
+          hasPaymentModeData = true;
+        } else if (pMode.includes('cash')) {
+          detectedCashAmount += amt;
+          hasPaymentModeData = true;
+        }
+      }
+    }
+
+    if (!hasPaymentModeData) {
+      detectedCashAmount = totalSalesAmount;
+      detectedUpiAmount = 0;
+    } else {
+      const accounted = detectedCashAmount + detectedUpiAmount;
+      if (accounted < totalSalesAmount) {
+        detectedCashAmount += (totalSalesAmount - accounted);
+      }
+    }
+
+    const productsList = Array.from(productSalesMap.values()).map(p => ({
+      name: p.name,
+      category: p.category,
+      quantity: Math.round(p.quantity * 100) / 100,
+      amount: Math.round(p.amount * 100) / 100
+    }));
+    productsList.sort((a, b) => b.amount - a.amount);
+
+    const salesSummary = {
+      date: importDate || new Date().toISOString().split('T')[0],
+      total_amount: Math.round(totalSalesAmount * 100) / 100,
+      cash_amount: Math.round(detectedCashAmount * 100) / 100,
+      upi_amount: Math.round(detectedUpiAmount * 100) / 100,
+      total_items_count: Math.round(totalSalesUnits * 100) / 100,
+      products: productsList,
+      hasPaymentModeData
+    };
+
     return {
       totalRows,
       ignoredCharges,
@@ -459,7 +582,8 @@ export default function KotBills({ showToast, API_BASE }) {
       matchedRows,
       groupedBills,
       detectedSuppliersWithCharges,
-      excludedWaterSupplierIds: Array.from(excludedWaterSuppliers)
+      excludedWaterSupplierIds: Array.from(excludedWaterSuppliers),
+      salesSummary
     };
   };
 
@@ -573,7 +697,29 @@ export default function KotBills({ showToast, API_BASE }) {
 
       if (!res.ok) throw new Error('Failed to import KOT bills');
       const data = await res.json();
-      showToast(`Successfully imported ${data.length} KOT bills`, 'success');
+
+      // Sync daily sales & product breakdown to Sales & Collections tab
+      if (parsedResults.salesSummary && parsedResults.salesSummary.products.length > 0) {
+        try {
+          await fetch(`${API_BASE}/sales/daily`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              date: importDate,
+              total_amount: parsedResults.salesSummary.total_amount,
+              cash_amount: parsedResults.salesSummary.cash_amount,
+              upi_amount: parsedResults.salesSummary.upi_amount,
+              total_items_count: parsedResults.salesSummary.total_items_count,
+              products: parsedResults.salesSummary.products,
+              source: 'kot_csv_import'
+            })
+          });
+        } catch (salesErr) {
+          console.error('Failed to sync sales to daily_sales collection:', salesErr);
+        }
+      }
+
+      showToast(`Successfully imported ${data.length} KOT bills & synced to Sales & Collections`, 'success');
       
       setCsvFile(null);
       setRawCsvText('');
@@ -939,6 +1085,19 @@ export default function KotBills({ showToast, API_BASE }) {
                           </div>
                         ) : (
                           <>
+                            {parsedResults.salesSummary && parsedResults.salesSummary.products.length > 0 && (
+                              <div style={{ marginBottom: '0.85rem', padding: '0.6rem 0.75rem', background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: 'var(--radius-sm)', fontSize: '0.72rem' }}>
+                                <div style={{ fontWeight: 700, color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.2rem' }}>
+                                  <ShoppingBag size={13} /> Sales & Collections Extraction
+                                </div>
+                                <div style={{ color: 'var(--text-secondary)', lineHeight: 1.35 }}>
+                                  <strong>{parsedResults.salesSummary.products.length} Products ({parsedResults.salesSummary.total_items_count} Units)</strong> • Total: <strong className="text-gold">{formatCurrency(parsedResults.salesSummary.total_amount)}</strong>
+                                  <br />
+                                  <span>Cash: <strong style={{ color: '#10b981' }}>{formatCurrency(parsedResults.salesSummary.cash_amount)}</strong> | UPI: <strong style={{ color: '#f59e0b' }}>{formatCurrency(parsedResults.salesSummary.upi_amount)}</strong></span>
+                                </div>
+                              </div>
+                            )}
+
                             <div style={{ fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>
                               Parsed KOT Statements:
                             </div>

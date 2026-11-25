@@ -26,7 +26,7 @@ async function clearCollection(collectionName) {
 
 async function main() {
   console.log('⚠ STARTING DATABASE RESET...');
-  const collections = ['attendance', 'kot_bills', 'advances', 'salary_payouts', 'suppliers', 'settings'];
+  const collections = ['attendance', 'kot_bills', 'advances', 'salary_payouts', 'suppliers', 'settings', 'daily_sales'];
   
   for (const coll of collections) {
     await clearCollection(coll);

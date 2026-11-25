@@ -477,6 +477,115 @@ app.delete('/api/kot/:id', asyncHandler(async (req, res) => {
 }));
 
 
+// ==================== SALES & COLLECTIONS ROUTES ====================
+
+// Get daily sales record for a specific date (YYYY-MM-DD)
+app.get('/api/sales/daily', asyncHandler(async (req, res) => {
+  const { date } = req.query;
+  if (!date) {
+    return res.status(400).json({ error: 'Date query parameter is required (YYYY-MM-DD)' });
+  }
+  const doc = await db.collection('daily_sales').doc(date).get();
+  if (!doc.exists) {
+    return res.json(null);
+  }
+  res.json({ id: doc.id, ...doc.data() });
+}));
+
+// Save or update daily sales record
+app.post('/api/sales/daily', asyncHandler(async (req, res) => {
+  const { date, total_amount, cash_amount, upi_amount, total_items_count, products, source } = req.body;
+  if (!date) {
+    return res.status(400).json({ error: 'Date is required' });
+  }
+  const docRef = db.collection('daily_sales').doc(date);
+  const data = {
+    date,
+    total_amount: parseFloat(total_amount) || 0,
+    cash_amount: parseFloat(cash_amount) || 0,
+    upi_amount: parseFloat(upi_amount) || 0,
+    total_items_count: parseInt(total_items_count, 10) || 0,
+    products: Array.isArray(products) ? products : [],
+    source: source || 'csv_import',
+    updated_at: new Date().toISOString()
+  };
+  await docRef.set(data, { merge: true });
+  res.status(200).json({ id: date, ...data });
+}));
+
+// Update Cash / UPI collection amounts for a specific date
+app.patch('/api/sales/daily/:date/collection', asyncHandler(async (req, res) => {
+  const { date } = req.params;
+  const { cash_amount, upi_amount } = req.body;
+  const docRef = db.collection('daily_sales').doc(date);
+  const doc = await docRef.get();
+  if (!doc.exists) {
+    return res.status(404).json({ error: `Sales record not found for date ${date}` });
+  }
+  const cash = parseFloat(cash_amount) || 0;
+  const upi = parseFloat(upi_amount) || 0;
+  await docRef.update({
+    cash_amount: cash,
+    upi_amount: upi,
+    updated_at: new Date().toISOString()
+  });
+  const updatedDoc = await docRef.get();
+  res.json({ id: updatedDoc.id, ...updatedDoc.data() });
+}));
+
+// Get all sales records for a month (YYYY-MM)
+app.get('/api/sales/month', asyncHandler(async (req, res) => {
+  const { month } = req.query; // YYYY-MM
+  if (!month) {
+    return res.status(400).json({ error: 'Month query parameter is required (YYYY-MM)' });
+  }
+  const startDate = `${month}-01`;
+  const [yearStr, monthStr] = month.split('-');
+  const year = parseInt(yearStr, 10);
+  const m = parseInt(monthStr, 10);
+  const lastDay = new Date(year, m, 0).getDate();
+  const pad = (n) => n < 10 ? '0' + n : n;
+  const endDate = `${year}-${pad(m)}-${pad(lastDay)}`;
+
+  const snapshot = await db.collection('daily_sales')
+    .where('date', '>=', startDate)
+    .where('date', '<=', endDate)
+    .get();
+
+  const records = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  records.sort((a, b) => a.date.localeCompare(b.date));
+  res.json(records);
+}));
+
+// Get all sales records within a date range
+app.get('/api/sales/range', asyncHandler(async (req, res) => {
+  const { start_date, end_date } = req.query;
+  if (!start_date || !end_date) {
+    return res.status(400).json({ error: 'start_date and end_date query parameters are required' });
+  }
+  const snapshot = await db.collection('daily_sales')
+    .where('date', '>=', start_date)
+    .where('date', '<=', end_date)
+    .get();
+
+  const records = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  records.sort((a, b) => a.date.localeCompare(b.date));
+  res.json(records);
+}));
+
+// Delete a daily sales record
+app.delete('/api/sales/daily/:date', asyncHandler(async (req, res) => {
+  const { date } = req.params;
+  const docRef = db.collection('daily_sales').doc(date);
+  const doc = await docRef.get();
+  if (!doc.exists) {
+    return res.status(404).json({ error: `Sales record not found for date ${date}` });
+  }
+  await docRef.delete();
+  res.json({ message: 'Daily sales record deleted successfully' });
+}));
+
+
 // ==================== ADVANCES ROUTES ====================
 
 // Get advances filterable by supplier_id and status

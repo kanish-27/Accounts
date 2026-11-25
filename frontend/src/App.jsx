@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Wine, LayoutDashboard, Users, CalendarCheck, FileSpreadsheet, Calculator, LogOut, Check, AlertCircle, Sun, Moon, Settings as SettingsIcon, Menu, X, Download, DollarSign } from 'lucide-react';
+import { Wine, LayoutDashboard, Users, CalendarCheck, FileSpreadsheet, Calculator, LogOut, Check, AlertCircle, Sun, Moon, Settings as SettingsIcon, Menu, X, Download, DollarSign, ShoppingBag } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import Suppliers from './components/Suppliers';
 import MonthlyWorkers from './components/MonthlyWorkers';
 import Cleaners from './components/Cleaners';
 import Attendance from './components/Attendance';
 import KotBills from './components/KotBills';
+import SalesCollections from './components/SalesCollections';
 import SalaryPayroll from './components/SalaryPayroll';
 import Settings from './components/Settings';
 import LandingPage from './components/LandingPage';
@@ -176,6 +177,8 @@ function App() {
         return <Attendance showToast={showToast} API_BASE={API_BASE} settings={settings} />;
       case 'kot':
         return <KotBills showToast={showToast} API_BASE={API_BASE} settings={settings} />;
+      case 'sales_collections':
+        return <SalesCollections showToast={showToast} API_BASE={API_BASE} settings={settings} />;
       case 'advances':
         return <AdvancesLog showToast={showToast} API_BASE={API_BASE} settings={settings} />;
       case 'payroll':
@@ -309,6 +312,18 @@ function App() {
             >
               <FileSpreadsheet size={18} />
               KOT Bills Log
+            </div>
+          </li>
+          <li>
+            <div 
+              className={`nav-link ${currentTab === 'sales_collections' ? 'active' : ''}`}
+              onClick={() => {
+                setCurrentTab('sales_collections');
+                setSidebarOpen(false);
+              }}
+            >
+              <ShoppingBag size={18} />
+              Sales & Collections
             </div>
           </li>
           <li>

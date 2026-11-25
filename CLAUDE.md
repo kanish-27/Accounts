@@ -41,6 +41,7 @@ frontend/src/components/        one component per sidebar tab
 | `kot_bills` | auto | `supplier_id, bill_number, amount, date, time, remarks` |
 | `advances` | auto | `supplier_id, amount, date, remarks, status` (`pending` → `deducted`), `payout_id` |
 | `salary_payouts` | auto | period, pay breakdown, `payment_date`, `worker_type` (absent for suppliers, `monthly`, `cleaner`) |
+| `daily_sales` | `YYYY-MM-DD` | `date, total_amount, cash_amount, upi_amount, total_items_count, products: [{name, category, quantity, amount}], source, updated_at` |
 | `settings` | `admin_password`, `admin_name`, `kot_commission_limit` | `{ value }` (stored as strings) |
 
 Conventions:
@@ -69,7 +70,8 @@ Conventions:
 - Each tab component receives `{ showToast, API_BASE, settings }`, fetches with plain `fetch` in `useEffect`, keeps state in local `useState`. No global store.
 - **Adding a tab:** create the component in `components/`, add a `case` in `renderTabContent` and a sidebar `<li>` in `App.jsx`.
 - Printing: set a `print*Data` state → render a print-only portal → `window.print()` on a timer; cleared on focus/afterprint.
-- **KOT CSV import** (`KotBills.jsx`): detects `item_name`, `category_name`, `assign_to`, `item_total` columns; drops charge rows (`Kudil Charge`, `AC Charges`); unconditionally excludes products in `EXCLUDED_KOT_ITEMS` (Tumbler, snacks, 300/500ml water); conditionally excludes 1L water bottles (`Aquafina 1 L`, `Water 1 L`) only for the user-selected in-charge supplier(s) if charges are present (alter persons during lunch or other staff who took orders with charges will NOT have 1L water reduced); matches `assign_to` to supplier names (case/punctuation-insensitive); groups per supplier+date into bills `CSV-YYYYMMDD-<id>`, posted to `/api/kot/bulk`.
+- **KOT CSV import** (`KotBills.jsx`): detects `item_name`, `category_name`, `assign_to`, `item_total` columns; drops charge rows (`Kudil Charge`, `AC Charges`); unconditionally excludes products in `EXCLUDED_KOT_ITEMS` (Tumbler, snacks, 300/500ml water); conditionally excludes 1L water bottles (`Aquafina 1 L`, `Water 1 L`) only for the user-selected in-charge supplier(s) if charges are present (alter persons during lunch or other staff who took orders with charges will NOT have 1L water reduced); matches `assign_to` to supplier names (case/punctuation-insensitive); groups per supplier+date into bills `CSV-YYYYMMDD-<id>`, posted to `/api/kot/bulk`. Also automatically extracts product quantities, sales amount, and Cash/UPI payment modes and syncs to `daily_sales` (`/api/sales/daily`).
+- **Sales & Collections** (`SalesCollections.jsx`): Daily view of products sold with quantities, category, total revenue, and Cash vs UPI split (with manual adjustment dialog). Monthly view with monthly totals, daily revenue breakdown, and top-selling products. Supports direct CSV upload as well as automatic sync from KOT CSV import.
 
 ## Known issues / gotchas
 

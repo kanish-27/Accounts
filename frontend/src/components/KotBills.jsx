@@ -166,10 +166,14 @@ export default function KotBills({ showToast, API_BASE }) {
     return lines;
   };
 
-  const processCSVData = (lines) => {
+  const processCSVData = (lines, chargeSuppliers = selectedChargeSuppliers) => {
     if (lines.length < 2) {
       return { error: 'CSV file is empty or missing data rows.' };
     }
+
+    const activeChargeSuppliers = Array.isArray(chargeSuppliers)
+      ? chargeSuppliers
+      : (Array.isArray(selectedChargeSuppliers) ? selectedChargeSuppliers : []);
 
     // Identify columns
     const headers = lines[0].map(h => h.toLowerCase().replace(/[\s_-]+/g, ''));
@@ -369,8 +373,8 @@ export default function KotBills({ showToast, API_BASE }) {
         }
 
         const isGivenSupplier = matchedSup
-          ? chargeSuppliers.includes(matchedSup.id.toString())
-          : Array.from(keys).some(k => chargeSuppliers.includes(k));
+          ? activeChargeSuppliers.includes(matchedSup.id.toString())
+          : Array.from(keys).some(k => activeChargeSuppliers.includes(k));
 
         if (isGivenSupplier) {
           const personHasCharges = Array.from(keys).some(k => {

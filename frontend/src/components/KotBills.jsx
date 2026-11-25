@@ -949,32 +949,31 @@ export default function KotBills({ showToast, API_BASE }) {
                                     <th>Supplier</th>
                                     <th>Date</th>
                                     <th>Items</th>
-                                    <th>1L Water</th>
                                     <th style={{ textAlign: 'right' }}>Amount</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {parsedResults.groupedBills.map((b, idx) => (
                                     <tr key={idx}>
-                                      <td style={{ fontWeight: 600 }}>{b.supplier_name}</td>
+                                      <td style={{ padding: '0.45rem 0.35rem' }}>
+                                        <div style={{ fontWeight: 600 }}>{b.supplier_name}</div>
+                                        {b.hadWaterExcluded ? (
+                                          <div style={{ marginTop: '2px' }}>
+                                            <span style={{ color: '#ef4444', fontSize: '0.62rem', fontWeight: 600, background: 'rgba(239, 68, 68, 0.12)', padding: '1px 5px', borderRadius: '3px', display: 'inline-block' }}>
+                                              1L Water Removed
+                                            </span>
+                                          </div>
+                                        ) : b.hasChargesInCsv ? (
+                                          <div style={{ marginTop: '2px' }}>
+                                            <span style={{ color: '#10b981', fontSize: '0.62rem', fontWeight: 600, background: 'rgba(16, 185, 129, 0.12)', padding: '1px 5px', borderRadius: '3px', display: 'inline-block' }}>
+                                              Lunch Alter (Water Kept)
+                                            </span>
+                                          </div>
+                                        ) : null}
+                                      </td>
                                       <td>{importDate ? importDate.split('-').reverse().map((x, i) => i === 2 ? x.slice(2) : x).join('/') : ''}</td>
                                       <td>{b.count} rows</td>
-                                      <td>
-                                        {b.hadWaterExcluded ? (
-                                          <span style={{ color: '#ef4444', fontSize: '0.68rem', fontWeight: 600, background: 'rgba(239, 68, 68, 0.12)', padding: '2px 5px', borderRadius: '3px' }}>
-                                            Removed (Charges)
-                                          </span>
-                                        ) : b.hasChargesInCsv ? (
-                                          <span style={{ color: '#10b981', fontSize: '0.68rem', fontWeight: 600, background: 'rgba(16, 185, 129, 0.12)', padding: '2px 5px', borderRadius: '3px' }}>
-                                            Kept (Lunch Alter)
-                                          </span>
-                                        ) : (
-                                          <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem' }}>
-                                            Included
-                                          </span>
-                                        )}
-                                      </td>
-                                      <td className="text-gold" style={{ textAlign: 'right', fontWeight: 600 }}>
+                                      <td className="text-gold" style={{ textAlign: 'right', fontWeight: 700, fontSize: '0.85rem' }}>
                                         {formatCurrency(b.amount)}
                                       </td>
                                     </tr>

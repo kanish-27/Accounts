@@ -1665,9 +1665,9 @@ body.light-theme .menu-toggle-btn:hover {
 }
 
 .csv-preview-table-wrapper {
-  max-height: 200px;
+  max-height: 240px;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   margin-bottom: 1rem;

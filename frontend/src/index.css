@@ -1182,6 +1182,14 @@ body.light-theme .login-container {
     page-break-inside: auto !important;
   }
 
+  .printable-sales-statement thead {
+    display: table-header-group !important;
+  }
+
+  .printable-sales-statement tfoot {
+    display: table-footer-group !important;
+  }
+
   .printable-sales-statement tr {
     page-break-inside: avoid !important;
   }

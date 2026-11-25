@@ -1701,7 +1701,7 @@ export default function SalesCollections({ showToast, API_BASE }) {
           {printMonthlyData.topProducts.length > 0 && (
             <>
               <h4 style={{ fontSize: '0.9rem', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Top Moving Products of the Month
+                All Products Sold in the Month ({printMonthlyData.topProducts.length} Products)
               </h4>
               <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1.5rem', fontSize: '0.82rem' }}>
                 <thead>
@@ -1714,7 +1714,7 @@ export default function SalesCollections({ showToast, API_BASE }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {printMonthlyData.topProducts.slice(0, 20).map((p, idx) => (
+                  {printMonthlyData.topProducts.map((p, idx) => (
                     <tr key={idx} style={{ borderBottom: '1px solid #ddd' }}>
                       <td style={{ padding: '0.4rem', textAlign: 'center', color: '#666' }}>#{idx + 1}</td>
                       <td style={{ padding: '0.4rem', fontWeight: 600 }}>{p.name}</td>
@@ -1724,6 +1724,13 @@ export default function SalesCollections({ showToast, API_BASE }) {
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr style={{ borderTop: '2px solid #333', fontWeight: 700, background: '#f9f9f9' }}>
+                    <td colSpan="3" style={{ padding: '0.5rem', textAlign: 'right' }}>Total ({printMonthlyData.topProducts.length} Products):</td>
+                    <td style={{ padding: '0.5rem', textAlign: 'center' }}>{printMonthlyData.totals.units} Units</td>
+                    <td style={{ padding: '0.5rem', textAlign: 'right' }}>{formatCurrency(printMonthlyData.totals.revenue)}</td>
+                  </tr>
+                </tfoot>
               </table>
             </>
           )}

@@ -647,15 +647,25 @@ app.get('/api/sales/range', asyncHandler(async (req, res) => {
   res.json(records);
 }));
 
+// Clear all daily sales records from database
+app.delete('/api/sales/clear-all', asyncHandler(async (req, res) => {
+  const snapshot = await db.collection('daily_sales').get();
+  const batch = db.batch();
+  snapshot.docs.forEach(doc => {
+    batch.delete(doc.ref);
+  });
+  await batch.commit();
+  res.json({ message: `Successfully cleared all ${snapshot.size} sales records.` });
+}));
+
 // Delete a daily sales record
 app.delete('/api/sales/daily/:date', asyncHandler(async (req, res) => {
   const { date } = req.params;
   const docRef = db.collection('daily_sales').doc(date);
   const doc = await docRef.get();
-  if (!doc.exists) {
-    return res.status(404).json({ error: `Sales record not found for date ${date}` });
+  if (doc.exists) {
+    await docRef.delete();
   }
-  await docRef.delete();
   res.json({ message: 'Daily sales record deleted successfully' });
 }));
 

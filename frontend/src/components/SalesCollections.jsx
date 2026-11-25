@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   ShoppingBag, Calendar, DollarSign, Search, Filter, ArrowUpRight, 
   BarChart3, Banknote, Smartphone, Edit3, Upload, X, CheckCircle, 
-  ChevronLeft, ChevronRight, Printer, AlertCircle, FileSpreadsheet, RefreshCw
+  ChevronLeft, ChevronRight, Printer, AlertCircle, FileSpreadsheet, RefreshCw, Trash2
 } from 'lucide-react';
 
 export default function SalesCollections({ showToast, API_BASE }) {
@@ -173,6 +173,36 @@ export default function SalesCollections({ showToast, API_BASE }) {
       showToast('Error updating product details', 'error');
     } finally {
       setSavingProduct(false);
+    }
+  };
+
+  // Delete full sales and collections record for a specific day
+  const [deletingDay, setDeletingDay] = useState(false);
+
+  const handleDeleteDaySales = async (dateToDelete = selectedDate) => {
+    const formatted = formatDateDisplay(dateToDelete);
+    if (!window.confirm(`Are you sure you want to delete all sales and collections data for ${formatted}?\n\nThis will permanently remove all product quantities, cash, and UPI records for this day.`)) {
+      return;
+    }
+
+    try {
+      setDeletingDay(true);
+      const res = await fetch(`${API_BASE}/sales/daily/${dateToDelete}`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) throw new Error('Failed to delete daily sales');
+
+      showToast(`Sales record for ${formatted} deleted`, 'success');
+
+      if (dateToDelete === selectedDate) {
+        setDailyData(null);
+      }
+      fetchMonthlySales(selectedMonth);
+    } catch (err) {
+      console.error(err);
+      showToast('Error deleting daily sales record', 'error');
+    } finally {
+      setDeletingDay(false);
     }
   };
 
@@ -580,7 +610,7 @@ export default function SalesCollections({ showToast, API_BASE }) {
             </div>
 
             {dailyData && (
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <button
                   type="button"
                   className="btn btn-secondary"
@@ -596,6 +626,16 @@ export default function SalesCollections({ showToast, API_BASE }) {
                   style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem' }}
                 >
                   <Printer size={14} /> Print
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={() => handleDeleteDaySales(selectedDate)}
+                  disabled={deletingDay}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem' }}
+                  title={`Delete all sales & collections for ${formatDateDisplay(selectedDate)}`}
+                >
+                  <Trash2 size={14} /> {deletingDay ? 'Deleting...' : 'Delete Day'}
                 </button>
               </div>
             )}
@@ -989,18 +1029,29 @@ export default function SalesCollections({ showToast, API_BASE }) {
                             {formatCurrency(d.total_amount)}
                           </td>
                           <td style={{ textAlign: 'center' }}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedDate(d.date);
-                                setViewMode('daily');
-                              }}
-                              className="btn btn-secondary"
-                              style={{ padding: '0.2rem 0.5rem', fontSize: '0.72rem' }}
-                              title="View detailed product sales for this day"
-                            >
-                              View Day
-                            </button>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', justifyContent: 'center' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedDate(d.date);
+                                  setViewMode('daily');
+                                }}
+                                className="btn btn-secondary"
+                                style={{ padding: '0.2rem 0.5rem', fontSize: '0.72rem' }}
+                                title="View detailed product sales for this day"
+                              >
+                                View Day
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteDaySales(d.date)}
+                                className="btn btn-danger btn-icon"
+                                style={{ padding: '0.2rem', height: '24px', width: '24px', borderRadius: '4px' }}
+                                title={`Delete sales record for ${formatDateDisplay(d.date)}`}
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}

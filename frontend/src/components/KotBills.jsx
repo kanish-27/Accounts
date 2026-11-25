@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Wine, Plus, Search, Filter, Trash2, Calendar, User, DollarSign, Upload, X, CheckCircle, FileSpreadsheet } from 'lucide-react';
+import { Wine, Plus, Search, Filter, Trash2, Calendar, User, DollarSign, Upload, X, CheckCircle, FileSpreadsheet, AlertCircle } from 'lucide-react';
 
 // Products that never count towards a supplier's KOT amount
 const EXCLUDED_KOT_ITEMS = [
@@ -11,20 +11,20 @@ const EXCLUDED_KOT_ITEMS = [
   'Masal Kallai', 'Varu Kallai'
 ];
 
-// Products that are conditionally excluded from KOT ONLY if that particular person is having charges.
-// If the person does NOT have charges, these two products alone are added to the KOT calculation.
+// Products that are conditionally excluded from KOT ONLY if that particular person is in charge of charges.
+// If the person does NOT have charges or was only altering during lunch, these two products alone are added to the KOT calculation.
 const CONDITIONAL_KOT_ITEMS = [
   'Aquafina 1 L', 'Aquafina 1L', 'Aquafina 1 Ltr', 'Aquafina 1 Litre', 'Aquafina 1000 Ml',
   'Water 1 L', 'Water 1L', 'Water 1 Ltr', 'Water 1 Litre', 'Water 1000 Ml'
 ];
 
 // Available charges in the club: Kudil Charge, AC Charges
-const isChargeItemOrCategory = (category, itemName) => {
+const getChargeType = (category, itemName) => {
   const cat = (category || '').toLowerCase();
   const item = (itemName || '').toLowerCase();
 
   // Match Kudil Charge / Kudil Charges / Kudil
-  if (cat.includes('kudil') || item.includes('kudil')) return true;
+  if (cat.includes('kudil') || item.includes('kudil')) return 'Kudil Charge';
 
   // Match AC Charges / AC Charge / A/C Charges / A/C Charge / A.C Charges
   if (
@@ -36,13 +36,17 @@ const isChargeItemOrCategory = (category, itemName) => {
     cat.includes('a.c charges') || item.includes('a.c charges') ||
     cat.includes('ac_charge') || item.includes('ac_charge')
   ) {
-    return true;
+    return 'AC Charges';
   }
 
   // General charge detection (e.g. Category 'Charges' or 'Charge')
-  if (cat.includes('charge') || item.includes('charge')) return true;
+  if (cat.includes('charge') || item.includes('charge')) return 'Charge';
 
-  return false;
+  return null;
+};
+
+const isChargeItemOrCategory = (category, itemName) => {
+  return getChargeType(category, itemName) !== null;
 };
 
 // Lowercase, drop any leading quantity numbers (e.g. "2 Tumbler", "1 x Pori", "2 Aquafina 1 L"), then keep only letters/digits
@@ -64,10 +68,14 @@ export default function KotBills({ showToast, API_BASE }) {
 
   // CSV Import States
   const [csvFile, setCsvFile] = useState(null);
+  const [rawCsvText, setRawCsvText] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const [parsedResults, setParsedResults] = useState(null);
   const [importing, setImporting] = useState(false);
   const [importDate, setImportDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Selected supplier(s) in charge of charges (for removing 1L water bottles)
+  const [selectedChargeSuppliers, setSelectedChargeSuppliers] = useState([]);
 
   // Filters State
   const [filterSupplier, setFilterSupplier] = useState('');
@@ -260,10 +268,11 @@ export default function KotBills({ showToast, API_BASE }) {
       return suppliers.find(s => isSupplierMatch(assignTo, s));
     };
 
-    // First pass: identify which suppliers have charges (e.g. "Service Charge", "Packing Charges")
+    // First pass: identify which suppliers have charges (Kudil Charge, AC Charges)
     const suppliersWithCharges = new Set();
     const suppliersWithChargesByDate = new Set();
     const suppliersWithUndatedCharges = new Set();
+    const detectedMap = new Map();
 
     for (let i = 1; i < lines.length; i++) {
       const row = lines[i];
@@ -276,8 +285,8 @@ export default function KotBills({ showToast, API_BASE }) {
       const dateStr = dateIndex !== -1 ? row[dateIndex] : '';
       const rowDate = parseDateToYYYYMMDD(dateStr);
 
-      const isCharge = isChargeItemOrCategory(category, itemName);
-      if (isCharge && assignTo) {
+      const chargeType = getChargeType(category, itemName);
+      if (chargeType && assignTo) {
         const cleanAssign = assignTo.toLowerCase().replace(/[^a-z0-9]/g, '');
         const matched = findSupplier(assignTo);
         const keys = new Set();
@@ -287,6 +296,11 @@ export default function KotBills({ showToast, API_BASE }) {
           if (matched.name) {
             keys.add(matched.name.toLowerCase().replace(/[^a-z0-9]/g, ''));
           }
+          const sId = matched.id.toString();
+          if (!detectedMap.has(sId)) {
+            detectedMap.set(sId, { id: sId, name: matched.name, charges: new Set() });
+          }
+          detectedMap.get(sId).charges.add(chargeType);
         }
 
         keys.forEach(k => {
@@ -299,6 +313,17 @@ export default function KotBills({ showToast, API_BASE }) {
         });
       }
     }
+
+    const detectedSuppliersWithCharges = [];
+    detectedMap.forEach(val => {
+      detectedSuppliersWithCharges.push({
+        id: val.id,
+        name: val.name,
+        charges: Array.from(val.charges)
+      });
+    });
+
+    const excludedWaterSuppliers = new Set();
 
     for (let i = 1; i < lines.length; i++) {
       const row = lines[i];
@@ -328,8 +353,10 @@ export default function KotBills({ showToast, API_BASE }) {
       const matchedSup = findSupplier(assignTo);
 
       // Check conditional products (e.g. 2 Aquafina 1 L, 2 Water 1 L)
-      // Excluded ONLY if that particular person is having charges.
-      // If that person does NOT have charges, these two alone are added to the KOT calculation.
+      // Excluded ONLY if:
+      // 1. That particular person is in charge of charges (user selected/given)
+      // 2. AND either of the 2 charges (Kudil Charge, AC Charges) is available for them in the CSV.
+      // If someone altered during lunch, they are not selected, so their 1L water bottles are NOT removed.
       if (isConditionalKotItem(itemName)) {
         const cleanAssign = (assignTo || '').toLowerCase().replace(/[^a-z0-9]/g, '');
         const keys = new Set();
@@ -341,16 +368,25 @@ export default function KotBills({ showToast, API_BASE }) {
           }
         }
 
-        const personHasCharges = Array.from(keys).some(k => {
-          if (parsedDate && suppliersWithChargesByDate.has(`${k}_${parsedDate}`)) return true;
-          if (suppliersWithUndatedCharges.has(k)) return true;
-          if (suppliersWithCharges.has(k)) return true;
-          return false;
-        });
+        const isGivenSupplier = matchedSup
+          ? chargeSuppliers.includes(matchedSup.id.toString())
+          : Array.from(keys).some(k => chargeSuppliers.includes(k));
 
-        if (personHasCharges) {
-          ignoredItems++;
-          continue;
+        if (isGivenSupplier) {
+          const personHasCharges = Array.from(keys).some(k => {
+            if (parsedDate && suppliersWithChargesByDate.has(`${k}_${parsedDate}`)) return true;
+            if (suppliersWithUndatedCharges.has(k)) return true;
+            if (suppliersWithCharges.has(k)) return true;
+            return false;
+          });
+
+          if (personHasCharges) {
+            ignoredItems++;
+            if (matchedSup) {
+              excludedWaterSuppliers.add(matchedSup.id.toString());
+            }
+            continue;
+          }
         }
       }
 
@@ -391,12 +427,15 @@ export default function KotBills({ showToast, API_BASE }) {
     const groupedBills = Object.keys(grouped).map(key => {
       const g = grouped[key];
       const formattedDateForBill = g.date.replace(/-/g, '');
+      const sId = g.supplierId.toString();
       return {
         supplier_id: g.supplierId,
         supplier_name: g.supplierName,
         date: g.date,
         amount: g.amount,
         count: g.count,
+        hadWaterExcluded: excludedWaterSuppliers.has(sId),
+        hasChargesInCsv: detectedMap.has(sId),
         bill_number: `CSV-${formattedDateForBill}-${g.supplierId}`
       };
     });
@@ -414,8 +453,17 @@ export default function KotBills({ showToast, API_BASE }) {
       matchedSupplierCount,
       unmatchedSupplierCount,
       matchedRows,
-      groupedBills
+      groupedBills,
+      detectedSuppliersWithCharges,
+      excludedWaterSupplierIds: Array.from(excludedWaterSuppliers)
     };
+  };
+
+  const toggleChargeSupplier = (id) => {
+    const sId = id.toString();
+    setSelectedChargeSuppliers(prev =>
+      prev.includes(sId) ? prev.filter(x => x !== sId) : [...prev, sId]
+    );
   };
 
   const handleDrag = (e) => {
@@ -456,8 +504,9 @@ export default function KotBills({ showToast, API_BASE }) {
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target.result;
+      setRawCsvText(text);
       const parsedLines = parseCSV(text);
-      const results = processCSVData(parsedLines);
+      const results = processCSVData(parsedLines, selectedChargeSuppliers);
       setParsedResults(results);
       if (results.error) {
         showToast(results.error, 'error');
@@ -466,6 +515,12 @@ export default function KotBills({ showToast, API_BASE }) {
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleRemoveFile = () => {
+    setCsvFile(null);
+    setRawCsvText('');
+    setParsedResults(null);
   };
 
   const handleImportSubmit = async () => {
@@ -478,6 +533,20 @@ export default function KotBills({ showToast, API_BASE }) {
       return;
     }
 
+    // Confirmation if Kudil/AC charges detected in CSV but no in-charge supplier selected
+    if (
+      parsedResults.detectedSuppliersWithCharges &&
+      parsedResults.detectedSuppliersWithCharges.length > 0 &&
+      selectedChargeSuppliers.length === 0
+    ) {
+      const proceed = window.confirm(
+        'Kudil / AC charges were detected in this CSV, but NO supplier was selected as in-charge.\n\n1L water bottles will NOT be deducted for any staff (including alter persons).\n\nDo you want to proceed without deducting 1L water for charges?'
+      );
+      if (!proceed) {
+        return;
+      }
+    }
+
     setImporting(true);
     try {
       const formattedDateForBill = importDate.replace(/-/g, '');
@@ -488,7 +557,7 @@ export default function KotBills({ showToast, API_BASE }) {
           amount: b.amount,
           date: importDate,
           time: '12:00',
-          remarks: `CSV Import - ${b.count} items (Excluded ${parsedResults.ignoredCharges} charges, ${parsedResults.ignoredItems} non-KOT items)`
+          remarks: `CSV Import - ${b.count} items (Excluded ${parsedResults.ignoredCharges} charges, ${parsedResults.ignoredItems} non-KOT items${b.hadWaterExcluded ? '; 1L water removed for charges' : ''})`
         }))
       };
 
@@ -503,6 +572,7 @@ export default function KotBills({ showToast, API_BASE }) {
       showToast(`Successfully imported ${data.length} KOT bills`, 'success');
       
       setCsvFile(null);
+      setRawCsvText('');
       setParsedResults(null);
       fetchBills();
     } catch (err) {
@@ -513,21 +583,16 @@ export default function KotBills({ showToast, API_BASE }) {
     }
   };
 
-  // Re-process CSV when suppliers list changes
+  // Re-process CSV when suppliers list, selectedChargeSuppliers, or rawCsvText changes
   useEffect(() => {
-    if (csvFile && suppliers.length > 0) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const text = e.target.result;
-        const parsedLines = parseCSV(text);
-        const results = processCSVData(parsedLines);
-        setParsedResults(results);
-      };
-      reader.readAsText(csvFile);
+    if (rawCsvText && suppliers.length > 0) {
+      const parsedLines = parseCSV(rawCsvText);
+      const results = processCSVData(parsedLines, selectedChargeSuppliers);
+      setParsedResults(results);
     } else {
       setParsedResults(null);
     }
-  }, [csvFile, suppliers]);
+  }, [rawCsvText, suppliers, selectedChargeSuppliers]);
 
 
 
@@ -597,6 +662,117 @@ export default function KotBills({ showToast, API_BASE }) {
               />
             </div>
 
+            <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+                  Supplier in charge of Charges
+                </label>
+                {selectedChargeSuppliers.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedChargeSuppliers([])}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--accent-gold-glow, #f59e0b)',
+                      fontSize: '0.72rem',
+                      cursor: 'pointer',
+                      padding: 0,
+                      textDecoration: 'underline'
+                    }}
+                  >
+                    Clear ({selectedChargeSuppliers.length})
+                  </button>
+                )}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '0.45rem', lineHeight: 1.35 }}>
+                Select who is in charge of Kudil/AC charges. 1L water bottles will be removed <strong>only</strong> for this supplier if charges exist. Alter staff during lunch will <strong>not</strong> be reduced.
+              </div>
+
+              {/* Dropdown selector */}
+              <select
+                value={selectedChargeSuppliers.length === 1 ? selectedChargeSuppliers[0] : (selectedChargeSuppliers.length > 1 ? 'multiple' : '')}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === '') {
+                    setSelectedChargeSuppliers([]);
+                  } else if (val !== 'multiple') {
+                    setSelectedChargeSuppliers([val]);
+                  }
+                }}
+                className="form-control"
+                style={{ marginBottom: '0.45rem' }}
+              >
+                <option value="">-- None (Do not remove 1L water) --</option>
+                {suppliers.map(sup => {
+                  const sId = sup.id.toString();
+                  const detected = parsedResults?.detectedSuppliersWithCharges?.find(d => d.id === sId);
+                  return (
+                    <option key={sup.id} value={sId}>
+                      {sup.name} {detected ? `⚡ (Charges: ${detected.charges.join(', ')})` : ''}
+                    </option>
+                  );
+                })}
+                {selectedChargeSuppliers.length > 1 && (
+                  <option value="multiple" disabled>
+                    Multiple selected ({selectedChargeSuppliers.length} staff)
+                  </option>
+                )}
+              </select>
+
+              {/* Quick toggle chips */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                {suppliers.map(sup => {
+                  const sId = sup.id.toString();
+                  const isSelected = selectedChargeSuppliers.includes(sId);
+                  const detected = parsedResults?.detectedSuppliersWithCharges?.find(d => d.id === sId);
+                  return (
+                    <button
+                      key={sup.id}
+                      type="button"
+                      onClick={() => toggleChargeSupplier(sId)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.3rem',
+                        padding: '0.22rem 0.55rem',
+                        borderRadius: '9999px',
+                        fontSize: '0.72rem',
+                        fontWeight: isSelected ? 600 : 500,
+                        cursor: 'pointer',
+                        border: isSelected 
+                          ? '1px solid var(--accent-gold-border, #f59e0b)' 
+                          : '1px solid rgba(255, 255, 255, 0.12)',
+                        background: isSelected 
+                          ? 'rgba(245, 158, 11, 0.2)' 
+                          : 'rgba(255, 255, 255, 0.04)',
+                        color: isSelected 
+                          ? 'var(--accent-gold-glow, #fbbf24)' 
+                          : 'var(--text-secondary)',
+                        transition: 'all 0.15s ease'
+                      }}
+                      title={detected ? `Charges detected in CSV: ${detected.charges.join(', ')}` : 'Click to select/deselect'}
+                    >
+                      <span>{isSelected ? '✓' : '+'}</span>
+                      <span>{sup.name}</span>
+                      {detected && (
+                        <span style={{ 
+                          fontSize: '0.65rem', 
+                          background: isSelected ? 'rgba(245, 158, 11, 0.4)' : 'rgba(245, 158, 11, 0.15)', 
+                          color: '#f59e0b', 
+                          padding: '1px 4px', 
+                          borderRadius: '4px',
+                          fontWeight: 700
+                        }}>
+                          ⚡ Charges
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {!csvFile ? (
               <div 
                 className={`csv-upload-zone ${dragActive ? 'drag-active' : ''}`}
@@ -633,7 +809,7 @@ export default function KotBills({ showToast, API_BASE }) {
                     type="button"
                     className="btn btn-icon btn-danger"
                     style={{ padding: '0.25rem', height: 'auto', width: 'auto' }}
-                    onClick={() => { setCsvFile(null); setParsedResults(null); }}
+                    onClick={handleRemoveFile}
                     title="Remove file"
                   >
                     <X size={14} />
@@ -652,6 +828,81 @@ export default function KotBills({ showToast, API_BASE }) {
                           <CheckCircle size={14} className="text-green" />
                           Parsed KOT Data
                         </div>
+
+                        {/* Kudil / AC Charges detection banner & alter protection */}
+                        {parsedResults.detectedSuppliersWithCharges && parsedResults.detectedSuppliersWithCharges.length > 0 && (
+                          <div style={{
+                            padding: '0.65rem 0.75rem',
+                            background: selectedChargeSuppliers.length === 0 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(245, 158, 11, 0.06)',
+                            border: `1px solid ${selectedChargeSuppliers.length === 0 ? 'rgba(239, 68, 68, 0.4)' : 'var(--accent-gold-border)'}`,
+                            borderRadius: 'var(--radius-sm)',
+                            marginBottom: '0.85rem'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: selectedChargeSuppliers.length === 0 ? '#f87171' : 'var(--accent-gold-glow)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                <AlertCircle size={14} />
+                                Charges Detected in CSV
+                              </span>
+                              {selectedChargeSuppliers.length === 0 ? (
+                                <span style={{ fontSize: '0.68rem', color: '#f87171', fontWeight: 600 }}>Please Select In-Charge</span>
+                              ) : (
+                                <span style={{ fontSize: '0.68rem', color: '#10b981', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                  <CheckCircle size={12} /> Configured
+                                </span>
+                              )}
+                            </div>
+                            
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', lineHeight: 1.35 }}>
+                              Charges ({parsedResults.detectedSuppliersWithCharges.map(d => `${d.charges.join('/')} for ${d.name}`).join('; ')}) found in CSV. Select who was in charge to remove 1L water bottles (alter staff during lunch will not be reduced):
+                            </div>
+
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', alignItems: 'center' }}>
+                              {parsedResults.detectedSuppliersWithCharges.map(d => {
+                                const isSelected = selectedChargeSuppliers.includes(d.id);
+                                return (
+                                  <button
+                                    key={d.id}
+                                    type="button"
+                                    onClick={() => toggleChargeSupplier(d.id)}
+                                    className={`btn ${isSelected ? 'btn-primary' : 'btn-secondary'}`}
+                                    style={{ padding: '0.2rem 0.55rem', fontSize: '0.72rem', height: 'auto', borderRadius: '4px' }}
+                                  >
+                                    {isSelected ? '✓ ' : ''}{d.name} {isSelected ? '(In-Charge)' : '(Make In-Charge)'}
+                                  </button>
+                                );
+                              })}
+                              {selectedChargeSuppliers.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedChargeSuppliers([])}
+                                  className="btn btn-secondary"
+                                  style={{ padding: '0.2rem 0.55rem', fontSize: '0.72rem', height: 'auto', color: 'var(--text-muted)' }}
+                                >
+                                  Clear (No deduction)
+                                </button>
+                              )}
+                            </div>
+
+                            <div style={{ marginTop: '0.45rem', fontSize: '0.7rem', borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '0.4rem' }}>
+                              {selectedChargeSuppliers.length > 0 ? (
+                                <>
+                                  <div style={{ color: '#10b981', fontWeight: 600 }}>
+                                    ✓ 1L Water removed for: {suppliers.filter(s => selectedChargeSuppliers.includes(s.id.toString()) && parsedResults.excludedWaterSupplierIds.includes(s.id.toString())).map(s => s.name).join(', ') || 'None (no 1L bottles found in CSV)'}
+                                  </div>
+                                  {parsedResults.detectedSuppliersWithCharges.filter(d => !selectedChargeSuppliers.includes(d.id)).length > 0 && (
+                                    <div style={{ color: '#94a3b8', marginTop: '0.15rem' }}>
+                                      🛡️ Alter staff protected (1L water kept): {parsedResults.detectedSuppliersWithCharges.filter(d => !selectedChargeSuppliers.includes(d.id)).map(d => d.name).join(', ')}
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                <div style={{ color: '#f87171' }}>
+                                  No in-charge selected: 1L water bottles will NOT be deducted for any supplier.
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                         
                         <div className="csv-stats-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem', marginBottom: '1rem' }}>
                           <div className="csv-stat-item">
@@ -694,6 +945,7 @@ export default function KotBills({ showToast, API_BASE }) {
                                     <th>Supplier</th>
                                     <th>Date</th>
                                     <th>Items</th>
+                                    <th>1L Water</th>
                                     <th style={{ textAlign: 'right' }}>Amount</th>
                                   </tr>
                                 </thead>
@@ -703,6 +955,21 @@ export default function KotBills({ showToast, API_BASE }) {
                                       <td style={{ fontWeight: 600 }}>{b.supplier_name}</td>
                                       <td>{importDate ? importDate.split('-').reverse().map((x, i) => i === 2 ? x.slice(2) : x).join('/') : ''}</td>
                                       <td>{b.count} rows</td>
+                                      <td>
+                                        {b.hadWaterExcluded ? (
+                                          <span style={{ color: '#ef4444', fontSize: '0.68rem', fontWeight: 600, background: 'rgba(239, 68, 68, 0.12)', padding: '2px 5px', borderRadius: '3px' }}>
+                                            Removed (Charges)
+                                          </span>
+                                        ) : b.hasChargesInCsv ? (
+                                          <span style={{ color: '#10b981', fontSize: '0.68rem', fontWeight: 600, background: 'rgba(16, 185, 129, 0.12)', padding: '2px 5px', borderRadius: '3px' }}>
+                                            Kept (Lunch Alter)
+                                          </span>
+                                        ) : (
+                                          <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem' }}>
+                                            Included
+                                          </span>
+                                        )}
+                                      </td>
                                       <td className="text-gold" style={{ textAlign: 'right', fontWeight: 600 }}>
                                         {formatCurrency(b.amount)}
                                       </td>

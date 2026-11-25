@@ -69,7 +69,7 @@ Conventions:
 - Each tab component receives `{ showToast, API_BASE, settings }`, fetches with plain `fetch` in `useEffect`, keeps state in local `useState`. No global store.
 - **Adding a tab:** create the component in `components/`, add a `case` in `renderTabContent` and a sidebar `<li>` in `App.jsx`.
 - Printing: set a `print*Data` state → render a print-only portal → `window.print()` on a timer; cleared on focus/afterprint.
-- **KOT CSV import** (`KotBills.jsx`): detects `item_name`, `category_name`, `assign_to`, `item_total` columns; drops charge rows (`Kudil Charge`, `AC Charges`); unconditionally excludes products in `EXCLUDED_KOT_ITEMS` (Tumbler, snacks, 300/500ml water); conditionally excludes 1L water bottles (`Aquafina 1 L`, `Water 1 L`) only if that supplier has charges (included if they have no charges); matches `assign_to` to supplier names (case/punctuation-insensitive); groups per supplier+date into bills `CSV-YYYYMMDD-<id>`, posted to `/api/kot/bulk`.
+- **KOT CSV import** (`KotBills.jsx`): detects `item_name`, `category_name`, `assign_to`, `item_total` columns; drops charge rows (`Kudil Charge`, `AC Charges`); unconditionally excludes products in `EXCLUDED_KOT_ITEMS` (Tumbler, snacks, 300/500ml water); conditionally excludes 1L water bottles (`Aquafina 1 L`, `Water 1 L`) only for the user-selected in-charge supplier(s) if charges are present (alter persons during lunch or other staff who took orders with charges will NOT have 1L water reduced); matches `assign_to` to supplier names (case/punctuation-insensitive); groups per supplier+date into bills `CSV-YYYYMMDD-<id>`, posted to `/api/kot/bulk`.
 
 ## Known issues / gotchas
 
